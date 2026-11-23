@@ -109,3 +109,45 @@ Auto collect, visualize and alert for product items.
 - Support for more ecommerce websites.
 - Move worker `pullData` to another services (`worker.dev`, Google App Scripts, ...) to reduce cost.
 - Auto trigger `BUY`, `Add to cart`, ...
+
+# Alpha Books price control
+
+The `feat/alpha-books-price-control` branch adds a guarded price-control vertical slice for one Alpha Books Shopee shop. It includes the pricing engine, worker write-gates, Supabase schema, and a responsive admin preview.
+
+## Local preview
+
+```powershell
+cd apps/admin
+pnpm install
+pnpm dev
+```
+
+Open `http://localhost:3000`. The preview is intentionally labelled as simulated data until the Shopee and Supabase integrations are validated.
+
+## Shopee SKU price tracking
+
+Copy `apps/admin/.env.example` to `apps/admin/.env.local`, fill the server-only Shopee credentials, and set `SHOPEE_TRACKED_SKUS` as comma-separated `item_id:model_id` pairs. The admin route `/api/sku-prices` reads the current model price through Shopee Open API and refreshes the dashboard every 30 seconds. This is polling, not a WebSocket feed.
+
+The API client is read-only. Price writes remain disabled until the authorization, permission, one-SKU dry run, and read-back checks in `docs/INTEGRATION-VALIDATION.md` are completed.
+
+To read one SKU directly, call:
+
+```text
+GET https://alpha-books-price-control.vercel.app/api/products/price?item_id=<ITEM_ID>&model_id=<MODEL_ID>
+```
+
+## Validation commands
+
+```powershell
+cd packages/pricing-engine
+pnpm test
+
+cd ../../worker-functions
+node --test test/price-control.test.js
+
+cd ../apps/admin
+pnpm lint
+pnpm build
+```
+
+See [`docs/PRD.md`](docs/PRD.md), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), and [`docs/INTEGRATION-VALIDATION.md`](docs/INTEGRATION-VALIDATION.md) for scope, safety gates, and the current integration status.

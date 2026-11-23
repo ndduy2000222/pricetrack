@@ -1,0 +1,3 @@
+-- The production schema intentionally has no anonymous seed data.
+-- Use an authenticated test account and insert fixtures with owner_id set to that user.
+-- All fixture rows must carry source_status='mock' or source='fixture'.

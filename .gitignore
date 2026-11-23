@@ -85,3 +85,5 @@ duyet-price-tracker-8b683b4e75b0.json
 !apps/admin/tsconfig.json
 !packages/pricing-engine/package.json
 !packages/pricing-engine/tsconfig.json
+.vercel
+.env*

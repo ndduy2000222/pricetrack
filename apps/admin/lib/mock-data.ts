@@ -1,4 +1,4 @@
-export type RowStatus = 'within' | 'review' | 'blocked'
+export type RowStatus = 'within' | 'review' | 'blocked' | 'pending'
 
 export type PriceRow = {
   id: string
@@ -6,14 +6,35 @@ export type PriceRow = {
   title: string
   author: string
   competitor: string
-  competitorPrice: number
-  currentPrice: number
-  proposedPrice: number
-  floorPrice: number
-  ceilingPrice: number
+  competitorPrice: number | null
+  currentPrice: number | null
+  proposedPrice: number | null
+  floorPrice: number | null
+  ceilingPrice: number | null
   status: RowStatus
   updatedAt: string
   reason: string
+  priceDifference?: number | null
+  reductionVnd?: number | null
+  reductionPercent?: number | null
+  confidence?: number | null
+  expectedProfit?: number | null
+  evidenceUrl?: string | null
+  productUrl?: string | null
+  modelName?: string | null
+  isbn?: string | null
+  ean?: string | null
+  stock?: number | null
+  imageUrl?: string | null
+  imageId?: string | null
+  imageSource?: 'model' | 'product' | null
+  ownObservedAt?: string | null
+  competitorObservedAt?: string | null
+  competitorPriceBasis?: string | null
+  competitorVariant?: string | null
+  confidenceReason?: string | null
+  competitorSource?: string | null
+  competitorSourceName?: string | null
 }
 
 export const priceRows: PriceRow[] = [
@@ -29,4 +50,4 @@ export const priceRows: PriceRow[] = [
   { id: '10', sku: 'ABK0104', title: 'Điều Nhỏ Bé Kỳ Diệu', author: 'Héctor García', competitor: 'Fahasa', competitorPrice: 68000, currentPrice: 75000, proposedPrice: 68000, floorPrice: 59000, ceilingPrice: 85000, status: 'blocked', updatedAt: '10:17 26/01', reason: 'Tạm dừng cập nhật: đang rà soát biến động > 15% trong 1h' }
 ]
 
-export const formatVnd = (value: number) => `${new Intl.NumberFormat('vi-VN').format(value)} ₫`
+export const formatVnd = (value: number | null | undefined) => value == null ? '—' : `${new Intl.NumberFormat('vi-VN').format(value)} ₫`

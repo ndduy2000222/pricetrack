@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createShopeeOpenApiClient } from '../../../../lib/server/shopee-open-api'
+import { createClientFromEnvironment } from '../../../../lib/server/catalog'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,13 +15,13 @@ export async function GET (request: Request) {
     }, { status: 400, headers: { 'cache-control': 'no-store' } })
   }
 
-  const client = createShopeeOpenApiClient({
-    partnerId: process.env.SHOPEE_PARTNER_ID,
-    partnerKey: process.env.SHOPEE_PARTNER_KEY,
-    accessToken: process.env.SHOPEE_ACCESS_TOKEN,
-    shopId: process.env.SHOPEE_SHOP_ID,
-    apiBaseUrl: process.env.SHOPEE_API_BASE_URL
-  })
+  let client: Awaited<ReturnType<typeof createClientFromEnvironment>>['client']
+  try {
+    client = (await createClientFromEnvironment()).client
+  } catch (error) {
+    console.error('product_price_token_store_failed', error instanceof Error ? error.message : 'unknown_error')
+    return NextResponse.json({ status: 'upstream_error', message: 'Token Shopee chưa sẵn sàng' }, { status: 503, headers: { 'cache-control': 'no-store' } })
+  }
 
   if (!client.configured) {
     return NextResponse.json({

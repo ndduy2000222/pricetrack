@@ -52,3 +52,7 @@ export async function POST (request: Request) {
   }
   return NextResponse.json({ status: 'ok', processed: results.length, results }, { headers: { 'cache-control': 'no-store' } })
 }
+
+export async function GET (request: Request) {
+  return POST(request)
+}

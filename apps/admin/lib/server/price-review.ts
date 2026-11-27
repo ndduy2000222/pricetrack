@@ -205,7 +205,7 @@ export function buildReview (catalog: CatalogRow[], competitors: CompetitorRow[]
 }
 
 type CompetitorFeedConfig = { url: string, name: string, index: number, profile: CompetitorShopProfile, token: string | null }
-type CompetitorFeedOptions = { forceDiscovery?: boolean }
+type CompetitorFeedOptions = { forceDiscovery?: boolean, storedOnly?: boolean }
 
 function feedConfigs (profiles: CompetitorShopProfile[]): CompetitorFeedConfig[] {
   return profiles.flatMap((profile, index) => {
@@ -347,9 +347,14 @@ async function loadAffiliateDiscovery (catalog: CatalogRow[], profiles: Competit
 export async function loadCompetitorFeed (catalog: CatalogRow[] = [], options: CompetitorFeedOptions = {}): Promise<CompetitorFeedResult> {
   const profiles = competitorShopProfiles()
   const configs = feedConfigs(profiles)
+  const stored = await readStoredCompetitorRows(profiles)
+  if (options.storedOnly) {
+    return stored
+      ? { status: 'live', source: 'stored_competitor_offers', sourceName: 'Supabase · competitor_offers', rows: stored.rows, errors: [], shops: stored.shops, scope: stored.scope }
+      : { status: 'not_configured', source: 'none', sourceName: 'none', rows: [], errors: [], shops: shopStatuses(profiles), scope: scope('none', catalog, []) }
+  }
   if (process.env.SHOPEE_COMPETITOR_SOURCE_APPROVED !== 'true') return { status: 'not_configured', source: 'none', sourceName: 'none', rows: [], errors: [], shops: shopStatuses(profiles), scope: scope('none', catalog, []) }
   if (!configs.length && !options.forceDiscovery) {
-    const stored = await readStoredCompetitorRows(profiles)
     if (stored) return { status: 'live', source: 'stored_competitor_offers', sourceName: 'Supabase · competitor_offers', rows: stored.rows, errors: [], shops: stored.shops, scope: stored.scope }
   }
   if (!configs.length && affiliateConfigured()) return loadAffiliateDiscovery(catalog, profiles)

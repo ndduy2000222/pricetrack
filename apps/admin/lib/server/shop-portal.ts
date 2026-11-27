@@ -2,10 +2,10 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypt
 import { createShopeeAuthorizationUrl, exchangeShopeeAuthorizationCode, type ShopeeTokenSet } from './shopee-open-api'
 import { persistShopeeTokens } from './shopee-token-store'
 import { supabaseHeaders } from './supabase-http'
-import { isPortalSessionValid, shopAuthStatus } from './shop-auth'
+import { isPortalSessionValid, portalUserFromRequest, shopAuthStatus } from './shop-auth'
 
 type SupabaseConfig = { baseUrl: string, serviceKey: string }
-type InviteRow = { id: string, token_hash: string, expires_at: string, used_at: string | null, status: string, connection_id: string | null }
+type InviteRow = { id: string, token_hash: string, expires_at: string, used_at: string | null, status: string, connection_id: string | null, created_by_user_id?: string | null }
 export type ShopConnection = { id: string, shop_id: string, name: string | null, status: string, last_catalog_sync_at: string | null, last_error: string | null, created_at: string, updated_at: string }
 export type SyncRun = { id: string, connection_id: string, status: string, next_offset: number, page_count: number, total_items: number | null, processed_items: number, processed_rows: number, last_error: string | null, started_at: string | null, completed_at: string | null }
 
@@ -48,9 +48,16 @@ export async function listConnections () {
   return supabaseFetch<ShopConnection[]>('shop_connections?select=id,shop_id,name,status,last_catalog_sync_at,last_error,created_at,updated_at&order=created_at.desc')
 }
 
-export async function createInvite () {
+export async function listConnectionsForUser (userId: string) {
+  const memberships = await supabaseFetch<Array<{ connection_id: string }>>(`shop_memberships?user_id=eq.${encodeURIComponent(userId)}&select=connection_id`)
+  if (!memberships.length) return []
+  const ids = memberships.map((row) => row.connection_id).join(',')
+  return supabaseFetch<ShopConnection[]>(`shop_connections?select=id,shop_id,name,status,last_catalog_sync_at,last_error,created_at,updated_at&id=in.(${encodeURIComponent(ids)})&order=created_at.desc`)
+}
+
+export async function createInvite (createdByUserId?: string) {
   const token = randomBytes(32).toString('base64url')
-  const row = { token_hash: createHash('sha256').update(token).digest('hex'), expires_at: new Date(Date.now() + inviteTtlMs).toISOString(), status: 'pending' }
+  const row = { token_hash: createHash('sha256').update(token).digest('hex'), expires_at: new Date(Date.now() + inviteTtlMs).toISOString(), status: 'pending', created_by_user_id: createdByUserId ?? null }
   await supabaseFetch('shop_connection_invites', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify(row) })
   return { token, expiresAt: row.expires_at }
 }
@@ -75,14 +82,14 @@ export async function startShopAuthorization (token: string, redirectUri: string
 
 export async function completeShopAuthorization (params: { state: string, code: string, shopId: string, redirectUri: string }) {
   const stateHash = createHash('sha256').update(params.state).digest('hex')
-  const invites = await supabaseFetch<InviteRow[]>(`shop_connection_invites?state_hash=eq.${encodeURIComponent(stateHash)}&select=id,token_hash,expires_at,used_at,status,connection_id&limit=1`)
+  const invites = await supabaseFetch<InviteRow[]>(`shop_connection_invites?state_hash=eq.${encodeURIComponent(stateHash)}&select=id,token_hash,expires_at,used_at,status,connection_id,created_by_user_id&limit=1`)
   const invite = invites[0]
   if (!invite || invite.status !== 'pending' || invite.used_at || Date.parse(invite.expires_at) <= Date.now()) throw new Error('oauth_state_invalid_or_expired')
   const exchanged = await exchangeShopeeAuthorizationCode({ code: params.code, shopId: params.shopId })
   if (exchanged.shopId !== params.shopId) throw new Error('oauth_shop_identity_mismatch')
   await persistShopeeTokens(params.shopId, exchanged.tokens)
   const existing = await supabaseFetch<ShopConnection[]>(`shop_connections?shop_id=eq.${encodeURIComponent(params.shopId)}&select=id&limit=1`)
-  const connectionPayload = { shop_id: params.shopId, name: `Shopee shop ${params.shopId}`, status: 'connected', last_error: null, updated_at: new Date().toISOString() }
+  const connectionPayload = { shop_id: params.shopId, name: `Shopee shop ${params.shopId}`, status: 'connected', owner_user_id: invite.created_by_user_id ?? null, last_error: null, updated_at: new Date().toISOString() }
   let connectionId = existing[0]?.id
   if (connectionId) await supabaseFetch(`shop_connections?id=eq.${encodeURIComponent(connectionId)}`, { method: 'PATCH', body: JSON.stringify(connectionPayload) })
   else {
@@ -90,6 +97,7 @@ export async function completeShopAuthorization (params: { state: string, code: 
     connectionId = created[0]?.id
   }
   if (!connectionId) throw new Error('connection_create_failed')
+  if (invite.created_by_user_id) await supabaseFetch('shop_memberships?on_conflict=connection_id,user_id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ connection_id: connectionId, user_id: invite.created_by_user_id, role: 'admin' }) })
   await supabaseFetch(`shop_connection_invites?id=eq.${encodeURIComponent(invite.id)}`, { method: 'PATCH', body: JSON.stringify({ status: 'used', used_at: new Date().toISOString(), connection_id: connectionId, state_hash: null, state_expires_at: null }) })
   return { connectionId, shopId: params.shopId }
 }
@@ -100,6 +108,8 @@ export async function getConnection (id: string) {
 }
 
 export async function createSyncRun (connectionId: string) {
+  const running = await supabaseFetch<SyncRun[]>(`shop_sync_runs?connection_id=eq.${encodeURIComponent(connectionId)}&status=in.(queued,running)&select=*&order=created_at.desc&limit=1`)
+  if (running[0]) return running[0]
   const rows = await supabaseFetch<SyncRun[]>('shop_sync_runs', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ connection_id: connectionId, status: 'running', next_offset: 0, page_count: 0, processed_items: 0, processed_rows: 0, started_at: new Date().toISOString() }) })
   return rows[0]
 }

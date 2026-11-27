@@ -8,10 +8,11 @@ export function ShopAuthComplete () {
   useEffect(() => {
     const params = new URLSearchParams(window.location.hash.slice(1))
     const accessToken = params.get('access_token')
+    const refreshToken = params.get('refresh_token')
     const expiresIn = Number(params.get('expires_in'))
     window.history.replaceState(null, '', window.location.pathname)
     if (!accessToken) { queueMicrotask(() => setMessage('Link không hợp lệ hoặc đã hết hạn. Hãy yêu cầu link mới.')); return }
-    fetch('/api/shop-connections/admin-session', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'complete_link', accessToken, expiresIn }) })
+    fetch('/api/shop-connections/admin-session', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'complete_link', accessToken, refreshToken, expiresIn }) })
       .then(async (response) => { if (!response.ok) throw new Error('invalid_link'); window.location.replace('/connect/shops') })
       .catch(() => setMessage('Không thể xác nhận link. Hãy yêu cầu link mới.'))
   }, [])

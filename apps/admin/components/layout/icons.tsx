@@ -1,6 +1,6 @@
 import type { SVGProps } from 'react'
 
-export type AdminIconName = 'book' | 'chart' | 'chevronRight' | 'database' | 'menu' | 'panelLeft' | 'shield' | 'store' | 'x'
+export type AdminIconName = 'book' | 'chart' | 'chevronRight' | 'database' | 'menu' | 'panelLeft' | 'settings' | 'shield' | 'store' | 'tag' | 'x'
 
 const paths: Record<AdminIconName, React.ReactNode> = {
   book: <><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v17H6.5A2.5 2.5 0 0 0 4 21.5z" /><path d="M4 4.5v17M8 6h8" /></>,
@@ -9,8 +9,10 @@ const paths: Record<AdminIconName, React.ReactNode> = {
   database: <><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7" /></>,
   menu: <><path d="M4 6h16M4 12h16M4 18h16" /></>,
   panelLeft: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" /></>,
+  settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-1.8 1.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5v.2h-2.6v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1-1.8-1.8.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H6.3v-2.6h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1 1.8-1.8.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.5V4h2.6v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1 1.8 1.8-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1h.2v2.6h-.2a1.7 1.7 0 0 0-1.5 1.3Z" /></>,
   shield: <><path d="M12 3 20 6v5c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z" /><path d="m8.5 12 2.2 2.2 4.8-5" /></>,
   store: <><path d="M4 10v10h16V10M3 10l2-6h14l2 6" /><path d="M3 10a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0M9 20v-6h6v6" /></>,
+  tag: <><path d="M20 13 13 20a2 2 0 0 1-2.8 0L4 13V4h9l7 7a2 2 0 0 1 0 2Z" /><circle cx="8.5" cy="8.5" r="1" /></>,
   x: <><path d="m6 6 12 12M18 6 6 18" /></>
 }
 

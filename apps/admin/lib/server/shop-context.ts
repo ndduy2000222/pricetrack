@@ -25,6 +25,7 @@ async function sessionUser (request: Request) {
   return user.id ? user : null
 }
 
+
 async function membershipRole (connectionId: string, userId: string): Promise<ShopRole | null> {
   const cfg = supabaseConfig(); if (!cfg) throw new Error('shop_membership_lookup_failed')
   const query = new URLSearchParams({ select: 'role', connection_id: `eq.${connectionId}`, user_id: `eq.${userId}`, limit: '1' })

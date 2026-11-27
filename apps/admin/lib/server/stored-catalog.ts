@@ -6,6 +6,9 @@ type StoredCatalog = {
   shopId: string | null
   rows: CatalogRow[]
   observedAt: string | null
+  syncStatus?: string | null
+  lastCatalogSyncAt?: string | null
+  lastError?: string | null
 }
 
 const asRecord = (value: unknown): Record<string, unknown> => value && typeof value === 'object' ? value as Record<string, unknown> : {}
@@ -60,10 +63,10 @@ function toCatalogRow (rawValue: unknown): CatalogRow {
 
 async function resolveConnection (config: { url: string, key: string }, connectionId: string) {
   if (!connectionId) return null
-  const query = new URLSearchParams({ select: 'id,shop_id', id: `eq.${connectionId}`, limit: '1' })
+  const query = new URLSearchParams({ select: 'id,shop_id,status,last_catalog_sync_at,last_error', id: `eq.${connectionId}`, limit: '1' })
   const rows = await readJson(`${config.url}/rest/v1/shop_connections?${query.toString()}`, config.key)
   const connection = asRecord(Array.isArray(rows) ? rows[0] : null)
-  return connection.id ? { id: String(connection.id), shopId: connection.shop_id == null ? null : String(connection.shop_id) } : null
+  return connection.id ? { id: String(connection.id), shopId: connection.shop_id == null ? null : String(connection.shop_id), status: textOrNull(connection.status), lastCatalogSyncAt: textOrNull(connection.last_catalog_sync_at), lastError: textOrNull(connection.last_error) } : null
 }
 
 export async function readStoredCatalog (connectionId: string): Promise<StoredCatalog> {
@@ -71,7 +74,7 @@ export async function readStoredCatalog (connectionId: string): Promise<StoredCa
   if (!config) throw new Error('supabase_not_configured')
   try {
     const connection = await resolveConnection(config, connectionId)
-    if (!connection) return { connectionId, shopId: null, rows: [], observedAt: null }
+    if (!connection) throw new Error('shop_not_found')
     const rows: CatalogRow[] = []
     let offset = 0
     const pageSize = 1000
@@ -90,7 +93,7 @@ export async function readStoredCatalog (connectionId: string): Promise<StoredCa
       offset += batch.length
     }
     const observedAt = rows.map((row) => row.observedAt).filter(Boolean).sort().at(-1) ?? null
-    return { connectionId: connection.id, shopId: connection.shopId, rows, observedAt }
+    return { connectionId: connection.id, shopId: connection.shopId, rows, observedAt, ...(connection.status || connection.lastCatalogSyncAt || connection.lastError ? { syncStatus: connection.status, lastCatalogSyncAt: connection.lastCatalogSyncAt, lastError: connection.lastError } : {}) }
   } catch (error) {
     throw error instanceof Error ? error : new Error('stored_catalog_read_failed')
   }

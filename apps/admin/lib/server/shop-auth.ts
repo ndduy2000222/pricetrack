@@ -1,4 +1,5 @@
 const sessionCookie = 'alpha_shop_portal_session'
+const refreshCookie = 'alpha_shop_portal_refresh'
 
 function config () {
   const baseUrl = (process.env.SUPABASE_URL ?? '').replace(/\/$/, '')
@@ -24,6 +25,12 @@ async function authFetch<T> (path: string, body: Record<string, unknown>, redire
   return payload
 }
 
+function sessionToken (request: Request, name: string) {
+  const value = request.headers.get('cookie')?.split(';').map((part) => part.trim()).find((part) => part.startsWith(`${name}=`))?.slice(name.length + 1)
+  if (!value) return null
+  try { return decodeURIComponent(value) } catch { return null }
+}
+
 export function shopAuthStatus () {
   const cfg = config(); const emails = allowedEmails()
   return { configured: Boolean(cfg && emails.size), missing: [!cfg ? 'SUPABASE_URL + SUPABASE_ANON_KEY (hoặc SUPABASE_SECRET_KEY)' : '', !emails.size ? 'SHOP_PORTAL_ALLOWED_EMAILS' : ''].filter(Boolean) }
@@ -43,10 +50,22 @@ export async function verifyPortalAccessToken (token: string) {
   return emailAllowed(user.email)
 }
 
-export async function isPortalSessionValid (request: Request) {
-  const token = request.headers.get('cookie')?.split(';').map((part) => part.trim()).find((part) => part.startsWith(`${sessionCookie}=`))?.slice(sessionCookie.length + 1)
-  return token ? verifyPortalAccessToken(decodeURIComponent(token)) : false
+export async function portalUserFromRequest (request: Request) {
+  const cfg = config(); const token = sessionToken(request, sessionCookie)
+  if (!cfg || !token) return null
+  const response = await fetch(`${cfg.baseUrl}/auth/v1/user`, { headers: { apikey: cfg.apiKey, authorization: `Bearer ${token}` }, cache: 'no-store' })
+  if (!response.ok) return null
+  const user = await response.json().catch(() => ({})) as { id?: string, email?: string }
+  return user.id && emailAllowed(user.email) ? user : null
 }
 
-export function createPortalSessionCookie (accessToken: string, maxAge: number) { return `${sessionCookie}=${encodeURIComponent(accessToken)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${process.env.NODE_ENV === 'production' ? '; Secure' : ''}` }
-export function clearPortalSessionCookie () { return `${sessionCookie}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${process.env.NODE_ENV === 'production' ? '; Secure' : ''}` }
+export async function isPortalSessionValid (request: Request) {
+  return Boolean(await portalUserFromRequest(request))
+}
+
+export function createPortalSessionCookie (accessToken: string, maxAge: number, refreshToken?: string) {
+  const suffix = `; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`
+  return `${sessionCookie}=${encodeURIComponent(accessToken)}${suffix}`
+}
+export function createPortalRefreshCookie (refreshToken: string, maxAge: number) { return `${refreshCookie}=${encodeURIComponent(refreshToken)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${process.env.NODE_ENV === 'production' ? '; Secure' : ''}` }
+export function clearPortalSessionCookie () { return [`${sessionCookie}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`, `${refreshCookie}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`].join(', ') }

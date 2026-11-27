@@ -2,7 +2,6 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
-import Link from 'next/link'
 import { formatVnd, type CompetitorComparison, type PriceRow } from '../lib/mock-data'
 
 type Mode = 'monitor' | 'review' | 'catalog'
@@ -36,7 +35,6 @@ export function PriceControlDashboard () {
   const [rows, setRows] = useState<PriceRow[]>([])
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [selectedRow, setSelectedRow] = useState<PriceRow | null>(null)
-  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [showShops, setShowShops] = useState(false)
   const searchInput = useRef<HTMLInputElement>(null)
   const [dataSource, setDataSource] = useState<'loading' | 'live' | 'catalog-live' | 'review-live' | 'error'>('loading')
@@ -92,7 +90,7 @@ export function PriceControlDashboard () {
 
   useEffect(() => {
     const shortcut = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape') { setSelectedRow(null); setShowShops(false); setSidebarOpen(false) }
+      if (event.key === 'Escape') { setSelectedRow(null); setShowShops(false) }
       if (event.key === '/' && !(event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement)) { event.preventDefault(); searchInput.current?.focus() }
     }
     window.addEventListener('keydown', shortcut)
@@ -116,21 +114,21 @@ export function PriceControlDashboard () {
         const shopQuery = `connection_id=${encodeURIComponent(selectedShopId)}`
         const payload = await fetchJson(`/api/price-review?source=stored&${shopQuery}`)
         if (!active) return
-        if (payload?.status === 'live' && payload.catalogSource === 'stored' && Array.isArray(payload.rows)) {
+        if (payload?.status === 'ok' && payload.catalogSource === 'stored' && Array.isArray(payload.rows)) {
           setRows(payload.rows.map(normalizeReviewRow)); setDataSource('review-live'); setCatalogOrigin(payload.catalogSource === 'stored' ? 'stored' : 'live_sync')
           setCatalogRowCount(typeof payload.catalogRowCount === 'number' ? payload.catalogRowCount : payload.rows.length); setCatalogItemCount(typeof payload.catalogItemCount === 'number' ? payload.catalogItemCount : null); setCompetitorSource(typeof payload.competitorSource === 'string' ? payload.competitorSource : 'none'); setCompetitorFeedCount(typeof payload.competitorFeedCount === 'number' ? payload.competitorFeedCount : 0); setCompetitorFeedErrors(Array.isArray(payload.competitorFeedErrors) ? payload.competitorFeedErrors : [])
           setCompetitorShopCount(Array.isArray(payload.competitorShops) ? payload.competitorShops.length : 0); setCompetitorScope(payload.competitorScope ?? null)
           setLoadError(null)
-          setLastSync(new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }))
+          setLastSync(payload.catalogObservedAt ? new Date(payload.catalogObservedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : null)
           return
         }
         const catalogPayload = await fetchJson(`/api/catalog?all=true&source=stored&${shopQuery}`)
         if (!active) return
-        if (catalogPayload?.status === 'live' && catalogPayload.catalogSource === 'stored' && Array.isArray(catalogPayload.rows)) {
+        if (catalogPayload?.status === 'ok' && catalogPayload.catalogSource === 'stored' && Array.isArray(catalogPayload.rows)) {
           setRows(catalogPayload.rows.map(normalizeCatalogRow)); setDataSource('catalog-live'); setCatalogOrigin(catalogPayload.catalogSource === 'stored' ? 'stored' : 'live_sync')
           setCatalogRowCount(typeof catalogPayload.rows.length === 'number' ? catalogPayload.rows.length : null); setCatalogItemCount(typeof catalogPayload.itemCount === 'number' ? catalogPayload.itemCount : null); setCompetitorSource('none'); setCompetitorShopCount(0); setCompetitorScope(null)
           setLoadError(null)
-          setLastSync(new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }))
+          setLastSync(catalogPayload.observedAt ? new Date(catalogPayload.observedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : null)
         } else {
           setLoadError(readableApiError(catalogPayload?.code ?? payload?.code ?? catalogPayload?.message ?? payload?.message))
           setDataSource((current) => current === 'loading' ? 'error' : current)
@@ -141,7 +139,7 @@ export function PriceControlDashboard () {
         refreshing = false
       }
     }
-    refresh(); const timer = window.setInterval(refresh, 30_000)
+    refresh(); const timer = window.setInterval(refresh, 120_000)
     return () => { active = false; controller.abort(); window.clearInterval(timer) }
   }, [selectedShopId])
 
@@ -199,25 +197,8 @@ export function PriceControlDashboard () {
     setLoadError(shopId ? null : 'Hãy chọn shop trước khi đọc dữ liệu.')
   }
 
-  return <div className={`market-app ${sidebarOpen ? 'market-menu-open' : ''}`}>
-    <button className="market-overlay" type="button" aria-label="Đóng menu" onClick={() => setSidebarOpen(false)} />
-    <aside className="market-sidebar">
-      <Link className="market-brand" href="/"><span className="market-monogram">a.</span><span>Alpha Books<small>PRICE CONTROL</small></span></Link>
-      <div className="market-workspace"><span className="market-shop-avatar">{selectedShop ? 'AB' : '—'}</span><div><strong>{selectedShopLabel}</strong><small>{selectedShop ? 'Gian hàng Shopee' : 'Chọn shop để xem dữ liệu'}</small></div></div>
-      <p className="market-nav-label">KHÔNG GIAN LÀM VIỆC</p>
-      <nav aria-label="Điều hướng chính">
-        <button className={mode === 'monitor' ? 'active' : ''} onClick={() => { setMode('monitor'); setPage(1); setSidebarOpen(false) }}><Icon name="chart" />So sánh giá</button>
-        <button className={mode === 'catalog' ? 'active' : ''} onClick={() => { setMode('catalog'); setPage(1); setSidebarOpen(false) }}><Icon name="book" />Danh mục sách<span>{rows.length ? new Intl.NumberFormat('vi-VN').format(rows.length) : '—'}</span></button>
-        <button className={mode === 'review' ? 'active' : ''} onClick={() => { setMode('review'); setPage(1); setSidebarOpen(false) }}><Icon name="check" />Chờ duyệt<span>{reviewCount}</span></button>
-      </nav>
-      <p className="market-nav-label">QUẢN LÝ DỮ LIỆU</p>
-      <nav aria-label="Nguồn dữ liệu"><button onClick={() => setShowShops(true)}><Icon name="store" />Shop đối thủ<span>5</span></button><a href="/connect/shops"><Icon name="settings" />Kết nối & đồng bộ</a></nav>
-      <div className="market-sidebar-bottom"><div className="market-readonly"><Icon name="shield" /><span>Chế độ quan sát<small>Mọi đề xuất do bạn quyết định</small></span></div><div className="market-account"><span>DN</span><div><strong>Vận hành Alpha Books</strong><small>Workspace quản trị</small></div></div></div>
-    </aside>
-    <main className="market-main">
-      <header className="market-topbar"><div><button className="market-menu-button" onClick={() => setSidebarOpen(!sidebarOpen)} aria-label="Mở menu"><Icon name="menu" /></button><span>Workspace</span><Icon name="chevronRight" /><strong>{pageTitle}</strong></div><label aria-label="Chọn shop đang vận hành"><select value={selectedShopId} onChange={(event) => handleShopChange(event.target.value)}><option value="">Chọn shop…</option>{shopConnections.filter(isAuthorizedShop).map((shop) => <option key={shop.id} value={shop.id}>{shop.name || shop.shop_id}</option>)}</select></label></header>
-      <div className="market-content">
-        <div className="market-titlebar"><div><p>QUẢN TRỊ GIÁ BÁN</p><h1>{pageTitle}<span>{catalogOnly ? 'Catalog' : 'Thị trường Shopee'}</span></h1><div className="market-description">{selectedShop ? (catalogOnly ? `Sản phẩm, biến thể và giá từ ${selectedShopLabel}.` : `${selectedShopLabel} và 5 nhà bán. Cùng sách, cùng biến thể, cùng cơ sở giá.`) : 'Chọn shop để xem catalog và dữ liệu so sánh giá.'}</div></div><div className="market-actions"><a className="market-button" href={selectedShopId ? `${catalogOnly ? '/api/catalog?format=xlsx&all=true&source=stored' : '/api/price-review?format=xlsx&source=stored'}&connection_id=${encodeURIComponent(selectedShopId)}` : '#'}><Icon name="download" />Xuất Excel</a><button className="market-button market-button-dark" onClick={() => window.location.reload()}><Icon name="refresh" />Làm mới</button></div></div>
+  return <><div className="market-content">
+        <div className="market-titlebar"><div><p>QUẢN TRỊ GIÁ BÁN</p><h1>{pageTitle}<span>{catalogOnly ? 'Catalog' : 'Thị trường Shopee'}</span></h1><div className="market-description">{selectedShop ? (catalogOnly ? `Sản phẩm, biến thể và giá từ ${selectedShopLabel}.` : `${selectedShopLabel} và 5 nhà bán. Cùng sách, cùng biến thể, cùng cơ sở giá.`) : 'Chọn shop để xem catalog và dữ liệu so sánh giá.'}</div></div><div className="market-title-actions"><label className="market-shop-switcher" aria-label="Chọn shop đang vận hành"><span>Shop đang xem</span><select value={selectedShopId} onChange={(event) => handleShopChange(event.target.value)}><option value="">Chọn shop…</option>{shopConnections.filter(isAuthorizedShop).map((shop) => <option key={shop.id} value={shop.id}>{shop.name || shop.shop_id}</option>)}</select></label><div className="market-actions"><button className="market-button" type="button" onClick={() => setShowShops(true)}><Icon name="store" />Shop đối thủ</button><a className="market-button" href={selectedShopId ? `${catalogOnly ? '/api/catalog?format=xlsx&all=true&source=stored' : '/api/price-review?format=xlsx&source=stored'}&connection_id=${encodeURIComponent(selectedShopId)}` : '#'}><Icon name="download" />Xuất Excel</a><button className="market-button market-button-dark" type="button" onClick={() => window.location.reload()}><Icon name="refresh" />Làm mới</button></div></div></div>
         <section className="market-stats" aria-label="Tình trạng dữ liệu"><div><span>Danh mục đã lưu</span><strong>{isLive ? new Intl.NumberFormat('vi-VN').format(catalogRowCount ?? rows.length) : '—'}<small>SKU</small></strong><p>{catalogItemCount ?? '—'} sản phẩm Shopee</p></div><div><span>Đối chứng trên trang này</span><strong>{evidenceCount}<small>/ {visibleRows.length * 5} ô giá</small></strong><p>Đã xác minh đúng sách & giá</p></div><div><span>Chênh lệch trung bình</span><strong>{averageGap === null ? '—' : formatVnd(averageGap)}</strong><p>{comparableRows.length ? `Từ ${comparableRows.length} SKU có đối chứng` : 'Chưa có giá đủ điều kiện'}</p></div><div><span>Đề xuất cần duyệt</span><strong>{reviewCount}<small>SKU</small></strong><p>{blockedCount ? `${blockedCount} SKU đang bị chặn giá sàn` : 'Chờ đủ giá vốn và dữ liệu thị trường'}</p></div></section>
         {loadError ? <div className="market-notice" role="alert"><Icon name="info" />{loadError}<a href="/connect/shops">Kiểm tra kết nối</a></div> : null}
         <section className="market-datagrid" aria-label="Bảng so sánh giá">
@@ -228,11 +209,9 @@ export function PriceControlDashboard () {
           <div className="market-grid-footer"><span>{filteredRows.length ? (page - 1) * PAGE_SIZE + 1 : 0}–{Math.min(page * PAGE_SIZE, filteredRows.length)}<span> / {new Intl.NumberFormat('vi-VN').format(filteredRows.length)} SKU</span></span><div><button disabled={page === 1} aria-label="Trang trước" onClick={() => setPage(page - 1)}><Icon name="chevronLeft" /></button><span>Trang {page} / {pageCount}</span><button disabled={page >= pageCount} aria-label="Trang sau" onClick={() => setPage(page + 1)}><Icon name="chevronRight" /></button></div></div>
         </section>
         <footer className="market-statusline"><span><span className={isLive ? 'market-online' : 'market-offline'} />{sourceLabel}{lastSync ? ` · ${lastSync}` : ''}</span><span title={competitorFeedErrors.join(' · ')}>{feedReady ? `${competitorFeedCount} nguồn giá đang hoạt động` : 'Chưa có giá đối thủ được xác minh'}{competitorShopCount ? ` · ${competitorShopCount} shop` : ''}{competitorScope?.limited ? ` · Phạm vi ${competitorScope.requestedRows} SKU` : ''}{competitorSource === 'error' ? ' · Nguồn đang lỗi' : ''}</span></footer>
-      </div>
-    </main>
     {selectedRow ? <SkuDetails row={selectedRow} onClose={() => setSelectedRow(null)} /> : null}
     {showShops ? <div className="details-backdrop" onClick={() => setShowShops(false)}><aside className="details-panel market-shops-panel" onClick={(event) => event.stopPropagation()}><div className="details-header"><h2>5 shop đối thủ</h2><button className="icon-button" aria-label="Đóng shop đối thủ" onClick={() => setShowShops(false)}><Icon name="close" /></button></div><p className="market-description">Chọn một nhà bán để kiểm tra gian hàng trên Shopee.</p>{competitorColumns.map((shop, index) => <a key={shop.key} href={shop.shopUrl} target="_blank" rel="noreferrer"><span>0{index + 1}</span><div><strong>{shop.fullName}</strong><small>{shop.shopUrl.replace('https://', '')}</small></div><Icon name="external" /></a>)}</aside></div> : null}
-  </div>
+  </div></>
 }
 
 function PriceTableRow ({ row, index, catalogOnly, selected, onSelect, onOpen, onKeyDown }: { row: PriceRow, index: number, catalogOnly: boolean, selected: boolean, onSelect: () => void, onOpen: () => void, onKeyDown: (event: KeyboardEvent<HTMLTableRowElement>) => void }) {

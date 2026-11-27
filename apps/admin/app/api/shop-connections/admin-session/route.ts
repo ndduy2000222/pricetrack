@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { clearAdminCookie, createAdminCookie, isPortalAdmin, portalStatus, validAdminSecret } from '../../../../lib/server/shop-portal'
-import { clearPortalSessionCookie, createPortalSessionCookie, requestPortalLogin, verifyPortalAccessToken } from '../../../../lib/server/shop-auth'
+import { clearPortalSessionCookie, createPortalRefreshCookie, createPortalSessionCookie, requestPortalLogin, verifyPortalAccessToken } from '../../../../lib/server/shop-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -9,13 +9,13 @@ export async function GET (request: Request) {
 }
 
 export async function POST (request: Request) {
-  const body = await request.json().catch(() => ({})) as { action?: string, email?: string, accessToken?: string, expiresIn?: number, secret?: string }
+  const body = await request.json().catch(() => ({})) as { action?: string, email?: string, accessToken?: string, refreshToken?: string, expiresIn?: number, secret?: string }
   try {
     if (body.action === 'request_link') { await requestPortalLogin(String(body.email ?? ''), new URL('/connect/shops/auth', request.url).toString()); return NextResponse.json({ status: 'ok', message: 'Đã gửi link đăng nhập qua email.' }) }
     if (body.action === 'complete_link') {
       if (!body.accessToken || !await verifyPortalAccessToken(body.accessToken)) return NextResponse.json({ status: 'error', message: 'Link đăng nhập không hợp lệ hoặc email chưa được cấp quyền.' }, { status: 401 })
-      const maxAge = Math.min(3600, Math.max(60, Number(body.expiresIn) || 3600))
-      const response = NextResponse.json({ status: 'ok', authenticated: true }); response.headers.set('Set-Cookie', createPortalSessionCookie(body.accessToken, maxAge)); return response
+      const maxAge = Math.min(60 * 60 * 24 * 30, Math.max(60, Number(body.expiresIn) || 3600))
+      const response = NextResponse.json({ status: 'ok', authenticated: true }); response.headers.append('Set-Cookie', createPortalSessionCookie(body.accessToken, maxAge)); if (body.refreshToken) response.headers.append('Set-Cookie', createPortalRefreshCookie(body.refreshToken, 60 * 60 * 24 * 90)); return response
     }
     if (!validAdminSecret(String(body.secret ?? ''))) return NextResponse.json({ status: 'error', message: 'Hãy đăng nhập bằng email OTP.' }, { status: 401 })
     const response = NextResponse.json({ status: 'ok', authenticated: true }); response.headers.set('Set-Cookie', createAdminCookie()); return response

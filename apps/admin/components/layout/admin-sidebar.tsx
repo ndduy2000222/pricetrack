@@ -6,12 +6,20 @@ import { NavMain, type AdminNavItem } from './nav-main'
 
 const navGroups: Array<{ label: string, items: AdminNavItem[] }> = [
   {
-    label: 'PRICING INTELLIGENCE',
+    label: 'PHÂN TÍCH GIÁ',
     items: [{ title: 'So sánh giá', url: '/', icon: 'chart', description: 'Theo dõi thị trường' }]
   },
   {
-    label: 'DỮ LIỆU VẬN HÀNH',
+    label: 'VẬN HÀNH GIÁ',
+    items: [{ title: 'Khuyến mãi', url: '/promotions', icon: 'tag', description: 'Chương trình Shopee' }]
+  },
+  {
+    label: 'QUẢN LÝ DỮ LIỆU',
     items: [{ title: 'Kết nối & đồng bộ', url: '/connect/shops', icon: 'store', description: 'Shop và catalog' }]
+  },
+  {
+    label: 'HỆ THỐNG',
+    items: [{ title: 'Cấp quyền shop', url: '/connect/shop', icon: 'settings', description: 'Thiết lập kết nối' }]
   }
 ]
 
@@ -26,13 +34,13 @@ export function AdminSidebar ({ open, onClose }: { open: boolean, onClose: () =>
     </div>
     <div className="alpha-workspace-switch">
       <span className="alpha-workspace-avatar">AB</span>
-      <span><strong>Alpha Books Official</strong><small>Workspace quản trị</small></span>
+      <span><strong>Không gian quản trị</strong><small>Điều khiển giá và dữ liệu</small></span>
       <AdminIcon name="chevronRight" />
     </div>
     <NavMain groups={navGroups} onNavigate={onClose} />
     <div className="alpha-sidebar-footer">
       <div className="alpha-readonly"><AdminIcon name="shield" /><span><strong>Chế độ quan sát</strong><small>Không tự động đổi giá</small></span></div>
-      <div className="alpha-account"><span className="alpha-account-avatar">DN</span><span><strong>Vận hành Alpha Books</strong><small>Quản trị workspace</small></span></div>
+      <div className="alpha-account"><span className="alpha-account-avatar">DN</span><span><strong>Tài khoản quản trị</strong><small>Quản trị workspace</small></span></div>
     </div>
   </aside>
 }

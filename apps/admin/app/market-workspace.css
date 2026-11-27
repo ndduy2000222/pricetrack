@@ -47,6 +47,78 @@ button,input,select { font:inherit; }
 @media(max-width:800px) { .market-sidebar { transform:translateX(-100%); width:212px; transition:transform .18s ease; }.market-main { margin-left:0; }.market-menu-open .market-sidebar { transform:translateX(0); }.market-menu-open .market-overlay { display:block; position:fixed; inset:0; z-index:34; background:#17283c66; border:0; }.market-menu-button { display:grid; place-items:center; border:0; padding:6px; background:transparent; }.market-topbar>div { gap:7px; }.market-topbar>div>span { display:none; }.market-titlebar { align-items:flex-start; }.market-titlebar h1>span { display:none; }.market-titlebar h1 { font-size:23px; }.market-actions { flex-direction:column; flex-shrink:0; }.market-stats { grid-template-columns:repeat(2,minmax(0,1fr)); row-gap:20px; }.market-stats>div:nth-child(2) { border-right:0; }.market-stats strong { font-size:22px; }.market-grid-toolbar { flex-wrap:wrap; padding:12px; }.market-search { width:100%; }.market-grid-toolbar>div { width:100%; }.market-select { flex:1; }.market-statusline { flex-direction:column; line-height:1.6; }.market-content { padding:24px 12px; }.market-price-table { min-width:1040px; }.market-price-table th.market-product-head,.market-price-table td.market-product { position:sticky; left:0; z-index:2; background:white; }.market-price-table .market-product-col { width:25%; }.market-price-table th.market-product-head { background:#f9fafc; }.portal-heading { align-items:flex-start; flex-direction:column; }.connection-row { align-items:flex-start; flex-direction:column; }.portal-page { padding:25px 16px; } }
 @media(prefers-reduced-motion:reduce) { .market-sidebar { transition:none; } }
 
+/* Shared content modules used inside the Kiranism-derived AdminShell. */
+.market-title-actions { display: grid; justify-items: end; gap: 10px; }
+.market-shop-switcher { display: inline-flex; align-items: center; gap: 8px; color: #7d8795; font-size: 10px; }
+.market-shop-switcher span { white-space: nowrap; }
+.market-shop-switcher select { min-height: 33px; max-width: 230px; padding: 0 28px 0 10px; border: 1px solid #e1e5eb; border-radius: 5px; background: #fff; color: #536174; font-size: 11px; }
+.details-backdrop { position: fixed; inset: 0; z-index: 60; display: flex; justify-content: flex-end; background: rgba(14, 23, 38, .35); backdrop-filter: blur(2px); }
+.details-panel { width: min(430px, 100%); height: 100%; overflow-y: auto; padding: 25px; background: #fff; box-shadow: -10px 0 35px rgba(16, 24, 40, .18); animation: slide-in .18s ease-out; }
+.details-header, .details-status, .detail-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.details-header h2 { margin: 5px 0 0; font-size: 23px; }
+.details-product { display: flex; align-items: center; gap: 13px; margin: 26px 0 16px; padding-bottom: 20px; border-bottom: 1px solid var(--market-border); }
+.details-product h3 { margin: 0 0 5px; font-size: 15px; }
+.details-product p { margin: 0; color: #69717e; font-size: 12px; }
+.details-status { color: #8d98a7; font-size: 10px; }
+.detail-price-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 22px 0; }
+.detail-price-grid > div { display: grid; gap: 6px; min-height: 78px; padding: 12px; border: 1px solid var(--market-border); border-radius: 8px; background: #fbfcfe; }
+.detail-price-grid span, .detail-price-grid small { color: #8a95a4; font-size: 10px; }
+.detail-price-grid b { color: #253246; font-size: 13px; }
+.details-section { padding: 18px 0; border-top: 1px solid var(--market-border); }
+.details-section h4 { margin: 0 0 13px; color: #536781; font-size: 12px; }
+.detail-line { min-height: 29px; color: #768294; font-size: 11px; }
+.detail-line b { color: #263447; font-size: 11px; text-align: right; }
+.reason-box { margin: 0; padding: 11px 12px; border-radius: 8px; background: #f7f9fc; color: #667386; font-size: 11px; line-height: 1.55; }
+.missing-evidence { display: flex; align-items: center; gap: 7px; padding: 11px 12px; border-radius: 8px; background: #fff7e4; color: #967029; font-size: 11px; }
+.competitor-list { display: grid; gap: 8px; }
+.competitor-comparison { padding: 10px 11px; border: 1px solid var(--market-border); border-radius: 8px; background: #fbfcfe; }
+.competitor-comparison-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.competitor-comparison-head span { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.competitor-comparison-head b { color: #263447; font-size: 11px; }
+.competitor-comparison-head strong { color: #c95431; font-size: 12px; }
+.competitor-comparison-body { display: flex; align-items: flex-start; gap: 8px; margin-top: 6px; }
+.competitor-comparison-body p { margin: 0 0 3px; color: #56657a; font-size: 10px; line-height: 1.35; }
+.competitor-comparison small { display: block; color: #8a95a4; font-size: 9px; line-height: 1.35; }
+.competitor-comparison a { display: inline-flex; align-items: center; gap: 4px; margin-top: 7px; color: #c95431; font-size: 10px; }
+.competitor-comparison .icon, .market-shops-panel .icon { width: 15px; height: 15px; }
+.market-shops-panel > a { display: flex; align-items: center; gap: 14px; padding: 20px 0; border-bottom: 1px solid var(--market-border); color: #5b6f89; }
+.market-shops-panel > a > span { color: #b1bbc9; font-size: 11px; }
+.market-shops-panel strong { font-size: 12px; font-weight: 500; }
+.market-shops-panel small { display: block; margin-top: 5px; color: #9ba9bc; font-size: 10px; }
+.market-shops-panel .icon { margin-left: auto; }
+@keyframes slide-in { from { transform: translateX(20px); opacity: .6; } to { transform: translateX(0); opacity: 1; } }
+
+.promotion-page { max-width: 1180px; margin: 0 auto; padding: 34px 30px 48px; }
+.promotion-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 26px; }
+.promotion-eyebrow { margin: 0 0 8px; color: #7b8797; font-size: 10px; font-weight: 800; letter-spacing: .12em; }
+.promotion-header h1 { margin: 0 0 8px; color: #27384f; font-size: 30px; letter-spacing: -.04em; }
+.promotion-message { margin: 0; color: #7d8795; font-size: 12px; }
+.promotion-controls { display: flex; align-items: flex-end; gap: 9px; }
+.promotion-select { display: grid; gap: 5px; color: #7d8795; font-size: 10px; }
+.promotion-select select { min-height: 36px; min-width: 210px; padding: 0 28px 0 10px; border: 1px solid #dde2e8; border-radius: 7px; background: #fff; color: #536174; font-size: 12px; }
+.promotion-button { min-height: 36px; padding: 0 13px; border: 1px solid transparent; border-radius: 7px; font-size: 12px; font-weight: 650; }
+.promotion-button-primary { background: #27384f; color: #fff; }
+.promotion-button:disabled { cursor: not-allowed; opacity: .5; }
+.promotion-table-card { overflow: hidden; border: 1px solid var(--market-border); border-radius: 8px; background: #fff; }
+.promotion-table-meta { display: flex; justify-content: space-between; padding: 16px 18px; border-bottom: 1px solid var(--market-border); color: #657287; font-size: 11px; }
+.promotion-table-meta span:last-child { color: #9aa4b1; }
+.promotion-table-scroll { overflow-x: auto; }
+.promotion-table-card table { width: 100%; min-width: 930px; border-collapse: collapse; }
+.promotion-table-card th { padding: 12px 14px; border-bottom: 1px solid var(--market-border); background: #f9fafc; color: #7c8797; font-size: 10px; font-weight: 600; text-align: left; white-space: nowrap; }
+.promotion-table-card td { padding: 14px; border-bottom: 1px solid #f0f2f5; color: #53647a; font-size: 11px; white-space: nowrap; }
+.promotion-table-card tbody tr:hover { background: #f8fafc; }
+.promotion-empty { padding: 48px 14px !important; color: #8a95a5 !important; text-align: center; }
+
+@media(max-width: 800px) {
+  .market-titlebar, .promotion-header { align-items: flex-start; flex-direction: column; }
+  .market-title-actions, .market-actions, .promotion-controls { width: 100%; }
+  .market-title-actions { justify-items: stretch; }
+  .market-actions { flex-wrap: wrap; }
+  .market-shop-switcher { justify-content: space-between; }
+  .market-shop-switcher select, .promotion-select, .promotion-select select { width: 100%; min-width: 0; }
+  .promotion-controls { align-items: stretch; flex-direction: column; }
+}
+
 /*
  * Phase 2 UI foundation. These tokens and shell primitives are adapted from
  * Kiranism's MIT-licensed shell at commit 89f4e257650905a3a206f8449757f981bb811306.

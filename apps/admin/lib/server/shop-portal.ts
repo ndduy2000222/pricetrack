@@ -79,6 +79,7 @@ export async function completeShopAuthorization (params: { state: string, code: 
   const invite = invites[0]
   if (!invite || invite.status !== 'pending' || invite.used_at || Date.parse(invite.expires_at) <= Date.now()) throw new Error('oauth_state_invalid_or_expired')
   const exchanged = await exchangeShopeeAuthorizationCode({ code: params.code, shopId: params.shopId })
+  if (exchanged.shopId !== params.shopId) throw new Error('oauth_shop_identity_mismatch')
   await persistShopeeTokens(params.shopId, exchanged.tokens)
   const existing = await supabaseFetch<ShopConnection[]>(`shop_connections?shop_id=eq.${encodeURIComponent(params.shopId)}&select=id&limit=1`)
   const connectionPayload = { shop_id: params.shopId, name: `Shopee shop ${params.shopId}`, status: 'connected', last_error: null, updated_at: new Date().toISOString() }
@@ -115,6 +116,8 @@ export async function updateSyncRun (id: string, patch: Partial<SyncRun>) {
 export async function saveCatalogRows (connectionId: string, rows: Array<Record<string, unknown>>) {
   if (!rows.length) return
   await supabaseFetch('shop_catalog_rows?on_conflict=connection_id,item_id,model_id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify(rows.map((row) => ({ connection_id: connectionId, ...row }))) })
+  const history = rows.map((row) => ({ connection_id: connectionId, item_id: row.item_id, model_id: row.model_id, current_price: row.current_price ?? null, original_price: row.original_price ?? null, observed_at: row.observed_at, request_id: row.request_id ?? null, source: row.data_source ?? 'shopee_open_api' }))
+  await supabaseFetch('shop_price_history?on_conflict=connection_id,item_id,model_id,observed_at', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify(history) })
 }
 
 export async function completeSyncConnection (connectionId: string, patch: Record<string, unknown>) {

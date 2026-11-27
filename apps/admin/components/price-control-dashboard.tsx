@@ -10,7 +10,9 @@ type StatusFilter = 'all' | PriceRow['status']
 type SortKey = 'title' | 'currentPrice' | 'competitorPrice' | 'reductionVnd'
 type CompetitorScope = { mode: 'feed' | 'affiliate_keyword' | 'none', requestedRows: number, totalRows: number, limited: boolean }
 type CompetitorColumn = { key: string, label: string, fullName: string, shopUrl: string }
+type ShopConnection = { id: string, shop_id: string, name: string | null, status: string }
 const PAGE_SIZE = 10
+const SELECTED_SHOP_STORAGE_KEY = 'alpha-price-control:selected-shop'
 
 const competitorColumns: CompetitorColumn[] = [
   { key: 'omegaplusvn', label: 'Omega Plus', fullName: 'Omega Plus Books Store', shopUrl: 'https://shopee.vn/omegaplusvn' },
@@ -48,6 +50,45 @@ export function PriceControlDashboard () {
   const [competitorScope, setCompetitorScope] = useState<CompetitorScope | null>(null)
   const [competitorFeedErrors, setCompetitorFeedErrors] = useState<string[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [shopConnections, setShopConnections] = useState<ShopConnection[]>([])
+  const [selectedShopId, setSelectedShopId] = useState('')
+  const shopSelectionReady = useRef(false)
+
+  useEffect(() => {
+    let active = true
+    const loadConnections = async () => {
+      try {
+        const response = await fetch('/api/shop-connections', { cache: 'no-store' })
+        if (!response.ok) return
+        const payload = await response.json()
+        if (!active) return
+        const connections = (Array.isArray(payload?.connections) ? payload.connections : []) as ShopConnection[]
+        const authorizedConnections = connections.filter(isAuthorizedShop)
+        const storedShopId = readStoredShopId()
+        setShopConnections(connections)
+        setSelectedShopId((current) => {
+          if (authorizedConnections.some((shop) => shop.id === current)) return current
+          if (storedShopId && authorizedConnections.some((shop) => shop.id === storedShopId)) return storedShopId
+          return authorizedConnections.length === 1 ? authorizedConnections[0].id : ''
+        })
+        shopSelectionReady.current = true
+      } catch {
+        // Keep the persisted selection intact if the shop list is temporarily unavailable.
+      }
+    }
+    loadConnections()
+    return () => { active = false }
+  }, [])
+
+  useEffect(() => {
+    if (!shopSelectionReady.current) return
+    try {
+      if (selectedShopId) window.localStorage.setItem(SELECTED_SHOP_STORAGE_KEY, selectedShopId)
+      else window.localStorage.removeItem(SELECTED_SHOP_STORAGE_KEY)
+    } catch {
+      // Storage can be unavailable in private browsing or restricted environments.
+    }
+  }, [selectedShopId])
 
   useEffect(() => {
     const shortcut = (event: globalThis.KeyboardEvent) => {
@@ -60,12 +101,22 @@ export function PriceControlDashboard () {
 
   useEffect(() => {
     let active = true
+    let refreshing = false
+    const controller = new AbortController()
+    const fetchJson = async (url: string) => {
+      const response = await fetch(url, { cache: 'no-store', signal: controller.signal })
+      const payload = await response.json()
+      return active ? payload : null
+    }
     const refresh = async () => {
+      if (!active || refreshing) return
+      refreshing = true
       try {
-        const response = await fetch('/api/price-review?source=stored', { cache: 'no-store' })
-        const payload = await response.json()
+        if (!selectedShopId) return
+        const shopQuery = `connection_id=${encodeURIComponent(selectedShopId)}`
+        const payload = await fetchJson(`/api/price-review?source=stored&${shopQuery}`)
         if (!active) return
-        if (payload.status === 'live' && Array.isArray(payload.rows)) {
+        if (payload?.status === 'live' && payload.catalogSource === 'stored' && Array.isArray(payload.rows)) {
           setRows(payload.rows.map(normalizeReviewRow)); setDataSource('review-live'); setCatalogOrigin(payload.catalogSource === 'stored' ? 'stored' : 'live_sync')
           setCatalogRowCount(typeof payload.catalogRowCount === 'number' ? payload.catalogRowCount : payload.rows.length); setCatalogItemCount(typeof payload.catalogItemCount === 'number' ? payload.catalogItemCount : null); setCompetitorSource(typeof payload.competitorSource === 'string' ? payload.competitorSource : 'none'); setCompetitorFeedCount(typeof payload.competitorFeedCount === 'number' ? payload.competitorFeedCount : 0); setCompetitorFeedErrors(Array.isArray(payload.competitorFeedErrors) ? payload.competitorFeedErrors : [])
           setCompetitorShopCount(Array.isArray(payload.competitorShops) ? payload.competitorShops.length : 0); setCompetitorScope(payload.competitorScope ?? null)
@@ -73,29 +124,26 @@ export function PriceControlDashboard () {
           setLastSync(new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }))
           return
         }
-        const catalogFallback = await fetch('/api/catalog?all=true&source=stored', { cache: 'no-store' }); const catalogPayload = await catalogFallback.json()
-        if (catalogPayload.status === 'live' && Array.isArray(catalogPayload.rows)) {
+        const catalogPayload = await fetchJson(`/api/catalog?all=true&source=stored&${shopQuery}`)
+        if (!active) return
+        if (catalogPayload?.status === 'live' && catalogPayload.catalogSource === 'stored' && Array.isArray(catalogPayload.rows)) {
           setRows(catalogPayload.rows.map(normalizeCatalogRow)); setDataSource('catalog-live'); setCatalogOrigin(catalogPayload.catalogSource === 'stored' ? 'stored' : 'live_sync')
           setCatalogRowCount(typeof catalogPayload.rows.length === 'number' ? catalogPayload.rows.length : null); setCatalogItemCount(typeof catalogPayload.itemCount === 'number' ? catalogPayload.itemCount : null); setCompetitorSource('none'); setCompetitorShopCount(0); setCompetitorScope(null)
           setLoadError(null)
           setLastSync(new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }))
         } else {
-          const fallback = await fetch('/api/sku-prices', { cache: 'no-store' }); const fallbackPayload = await fallback.json()
-          if (fallbackPayload.status === 'live' && Array.isArray(fallbackPayload.rows)) {
-            setRows(fallbackPayload.rows.map(normalizeSkuRow)); setDataSource('live')
-            setCatalogRowCount(fallbackPayload.rows.length); setCatalogItemCount(null); setCompetitorSource('none'); setCompetitorShopCount(0); setCompetitorScope(null)
-            setLoadError(null)
-            setLastSync(new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }))
-          } else {
-            setLoadError(readableApiError(fallbackPayload.code ?? catalogPayload.code ?? payload.code ?? fallbackPayload.message ?? catalogPayload.message ?? payload.message))
-            setDataSource((current) => current === 'loading' ? 'error' : current)
-          }
+          setLoadError(readableApiError(catalogPayload?.code ?? payload?.code ?? catalogPayload?.message ?? payload?.message))
+          setDataSource((current) => current === 'loading' ? 'error' : current)
         }
-      } catch { if (active) { setLoadError('Không thể kết nối máy chủ để đọc catalog.'); setDataSource((current) => current === 'loading' ? 'error' : current) } }
+      } catch (error) {
+        if (active && !(error instanceof DOMException && error.name === 'AbortError')) { setLoadError('Không thể kết nối máy chủ để đọc catalog.'); setDataSource((current) => current === 'loading' ? 'error' : current) }
+      } finally {
+        refreshing = false
+      }
     }
     refresh(); const timer = window.setInterval(refresh, 30_000)
-    return () => { active = false; window.clearInterval(timer) }
-  }, [])
+    return () => { active = false; controller.abort(); window.clearInterval(timer) }
+  }, [selectedShopId])
 
   const filteredRows = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase()
@@ -127,15 +175,35 @@ export function PriceControlDashboard () {
   const onRowKeyDown = (event: KeyboardEvent<HTMLTableRowElement>, row: PriceRow) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedRow(row) } }
 
   const pageTitle = mode === 'review' ? 'Đề xuất cần duyệt' : mode === 'catalog' ? 'Danh mục sách' : 'So sánh giá'
+  const selectedShop = shopConnections.find((shop) => shop.id === selectedShopId)
+  const selectedShopLabel = selectedShop ? selectedShop.name || selectedShop.shop_id : 'Chưa chọn shop'
   const feedReady = competitorFeedCount > 0
   const evidenceCount = visibleRows.reduce((sum, row) => sum + (row.competitorComparisons?.filter((item) => item.status === 'matched').length ?? 0), 0)
   const catalogOnly = mode === 'catalog'
+  const handleShopChange = (shopId: string) => {
+    setSelectedShopId(shopId)
+    setRows([])
+    setPage(1)
+    setSelectedIds(new Set())
+    setSelectedRow(null)
+    setDataSource(shopId ? 'loading' : 'error')
+    setCatalogOrigin(null)
+    setLastSync(null)
+    setCatalogRowCount(null)
+    setCatalogItemCount(null)
+    setCompetitorSource('none')
+    setCompetitorFeedCount(0)
+    setCompetitorShopCount(0)
+    setCompetitorScope(null)
+    setCompetitorFeedErrors([])
+    setLoadError(shopId ? null : 'Hãy chọn shop trước khi đọc dữ liệu.')
+  }
 
   return <div className={`market-app ${sidebarOpen ? 'market-menu-open' : ''}`}>
     <button className="market-overlay" type="button" aria-label="Đóng menu" onClick={() => setSidebarOpen(false)} />
     <aside className="market-sidebar">
       <Link className="market-brand" href="/"><span className="market-monogram">a.</span><span>Alpha Books<small>PRICE CONTROL</small></span></Link>
-      <div className="market-workspace"><span className="market-shop-avatar">AB</span><div><strong>Alpha Books Official</strong><small>Gian hàng Shopee</small></div></div>
+      <div className="market-workspace"><span className="market-shop-avatar">{selectedShop ? 'AB' : '—'}</span><div><strong>{selectedShopLabel}</strong><small>{selectedShop ? 'Gian hàng Shopee' : 'Chọn shop để xem dữ liệu'}</small></div></div>
       <p className="market-nav-label">KHÔNG GIAN LÀM VIỆC</p>
       <nav aria-label="Điều hướng chính">
         <button className={mode === 'monitor' ? 'active' : ''} onClick={() => { setMode('monitor'); setPage(1); setSidebarOpen(false) }}><Icon name="chart" />So sánh giá</button>
@@ -147,16 +215,16 @@ export function PriceControlDashboard () {
       <div className="market-sidebar-bottom"><div className="market-readonly"><Icon name="shield" /><span>Chế độ quan sát<small>Mọi đề xuất do bạn quyết định</small></span></div><div className="market-account"><span>DN</span><div><strong>Vận hành Alpha Books</strong><small>Workspace quản trị</small></div></div></div>
     </aside>
     <main className="market-main">
-      <header className="market-topbar"><div><button className="market-menu-button" onClick={() => setSidebarOpen(!sidebarOpen)} aria-label="Mở menu"><Icon name="menu" /></button><span>Workspace</span><Icon name="chevronRight" /><strong>{pageTitle}</strong></div><a href="/connect/shops"><span className={isLive ? 'market-online' : 'market-offline'} />{isLive ? 'Catalog đã kết nối' : dataSource === 'loading' ? 'Đang tải catalog' : 'Kiểm tra kết nối'}<Icon name="chevronRight" /></a></header>
+      <header className="market-topbar"><div><button className="market-menu-button" onClick={() => setSidebarOpen(!sidebarOpen)} aria-label="Mở menu"><Icon name="menu" /></button><span>Workspace</span><Icon name="chevronRight" /><strong>{pageTitle}</strong></div><label aria-label="Chọn shop đang vận hành"><select value={selectedShopId} onChange={(event) => handleShopChange(event.target.value)}><option value="">Chọn shop…</option>{shopConnections.filter(isAuthorizedShop).map((shop) => <option key={shop.id} value={shop.id}>{shop.name || shop.shop_id}</option>)}</select></label></header>
       <div className="market-content">
-        <div className="market-titlebar"><div><p>QUẢN TRỊ GIÁ BÁN</p><h1>{pageTitle}<span>{catalogOnly ? 'Catalog' : 'Thị trường Shopee'}</span></h1><div className="market-description">{catalogOnly ? 'Sản phẩm, biến thể và giá từ gian hàng Alpha Books.' : 'Alpha Books và 5 nhà bán. Cùng sách, cùng biến thể, cùng cơ sở giá.'}</div></div><div className="market-actions"><a className="market-button" href={catalogOnly ? '/api/catalog?format=xlsx&all=true&source=stored' : '/api/price-review?format=xlsx&source=stored'}><Icon name="download" />Xuất Excel</a><button className="market-button market-button-dark" onClick={() => window.location.reload()}><Icon name="refresh" />Làm mới</button></div></div>
+        <div className="market-titlebar"><div><p>QUẢN TRỊ GIÁ BÁN</p><h1>{pageTitle}<span>{catalogOnly ? 'Catalog' : 'Thị trường Shopee'}</span></h1><div className="market-description">{selectedShop ? (catalogOnly ? `Sản phẩm, biến thể và giá từ ${selectedShopLabel}.` : `${selectedShopLabel} và 5 nhà bán. Cùng sách, cùng biến thể, cùng cơ sở giá.`) : 'Chọn shop để xem catalog và dữ liệu so sánh giá.'}</div></div><div className="market-actions"><a className="market-button" href={selectedShopId ? `${catalogOnly ? '/api/catalog?format=xlsx&all=true&source=stored' : '/api/price-review?format=xlsx&source=stored'}&connection_id=${encodeURIComponent(selectedShopId)}` : '#'}><Icon name="download" />Xuất Excel</a><button className="market-button market-button-dark" onClick={() => window.location.reload()}><Icon name="refresh" />Làm mới</button></div></div>
         <section className="market-stats" aria-label="Tình trạng dữ liệu"><div><span>Danh mục đã lưu</span><strong>{isLive ? new Intl.NumberFormat('vi-VN').format(catalogRowCount ?? rows.length) : '—'}<small>SKU</small></strong><p>{catalogItemCount ?? '—'} sản phẩm Shopee</p></div><div><span>Đối chứng trên trang này</span><strong>{evidenceCount}<small>/ {visibleRows.length * 5} ô giá</small></strong><p>Đã xác minh đúng sách & giá</p></div><div><span>Chênh lệch trung bình</span><strong>{averageGap === null ? '—' : formatVnd(averageGap)}</strong><p>{comparableRows.length ? `Từ ${comparableRows.length} SKU có đối chứng` : 'Chưa có giá đủ điều kiện'}</p></div><div><span>Đề xuất cần duyệt</span><strong>{reviewCount}<small>SKU</small></strong><p>{blockedCount ? `${blockedCount} SKU đang bị chặn giá sàn` : 'Chờ đủ giá vốn và dữ liệu thị trường'}</p></div></section>
         {loadError ? <div className="market-notice" role="alert"><Icon name="info" />{loadError}<a href="/connect/shops">Kiểm tra kết nối</a></div> : null}
         <section className="market-datagrid" aria-label="Bảng so sánh giá">
           <div className="market-grid-tabs"><div><button className={mode !== 'review' ? 'selected' : ''} onClick={() => { setMode(catalogOnly ? 'catalog' : 'monitor'); setPage(1) }}><Icon name="list" />Tất cả sách<span>{rows.length}</span></button><button className={mode === 'review' ? 'selected' : ''} onClick={() => { setMode('review'); setPage(1) }}>Cần duyệt<span>{reviewCount}</span></button></div><span>10 SKU / trang</span></div>
           <div className="market-grid-toolbar"><label className="market-search"><Icon name="search" /><input ref={searchInput} value={query} onChange={(event) => { setQuery(event.target.value); setPage(1) }} placeholder="Tìm sách, SKU, ISBN hoặc tác giả…" aria-label="Tìm kiếm SKU" /><kbd>/</kbd></label><div><label className="market-select"><Icon name="filter" /><select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value as StatusFilter); setPage(1) }} aria-label="Lọc trạng thái"><option value="all">Trạng thái</option><option value="pending">Chưa đối chứng</option><option value="review">Chờ duyệt</option><option value="blocked">Bị chặn</option><option value="within">Theo dõi</option></select></label><label className="market-select"><Icon name="sort" /><select value={sortKey} onChange={(event) => { toggleSort(event.target.value as SortKey); setPage(1) }} aria-label="Sắp xếp"><option value="reductionVnd">Thứ tự catalog</option><option value="title">Tên sách</option><option value="currentPrice">Giá Alpha</option><option value="competitorPrice">Giá đối thủ</option></select></label></div></div>
           {selectedIds.size > 0 ? <div className="market-selection">{selectedIds.size} SKU được chọn<button onClick={() => setSelectedIds(new Set())}>Bỏ chọn</button></div> : null}
-          <div className="market-table-scroll"><table className="market-price-table"><colgroup><col className="market-check-col" /><col className="market-product-col" /><col className="market-price-col" />{!catalogOnly ? competitorColumns.map((shop) => <col key={shop.key} className="market-price-col" />) : null}<col className="market-action-col" /></colgroup><thead><tr><th className="market-check"><input type="checkbox" checked={visibleRows.length > 0 && visibleRows.every((row) => selectedIds.has(row.id))} onChange={selectAllVisible} aria-label="Chọn tất cả SKU đang hiển thị" /></th><th className="market-product-head">Sách / biến thể</th><th className="market-own-head"><span className="market-column-avatar">AB</span><strong>Alpha Books</strong><small>Giá shop của bạn</small></th>{!catalogOnly ? competitorColumns.map((shop, index) => <th key={shop.key}><a href={shop.shopUrl} target="_blank" rel="noreferrer" title={shop.fullName}><span className="market-column-index">0{index + 1}</span><strong>{shop.label}</strong><small>Giá trước voucher <Icon name="external" /></small></a></th>) : null}<th /></tr></thead><tbody>{visibleRows.length ? visibleRows.map((row, index) => <PriceTableRow key={row.id} row={row} index={(page - 1) * PAGE_SIZE + index} catalogOnly={catalogOnly} selected={selectedIds.has(row.id)} onSelect={() => toggleSelected(row.id)} onOpen={() => setSelectedRow(row)} onKeyDown={(event) => onRowKeyDown(event, row)} />) : <tr><td className="market-empty" colSpan={catalogOnly ? 4 : 9}>{dataSource === 'loading' ? 'Đang tải danh mục sách…' : loadError ? 'Chưa tải được danh mục. Kiểm tra kết nối ở trên.' : 'Không có sách phù hợp bộ lọc.'}</td></tr>}</tbody></table></div>
+          <div className="market-table-scroll"><table className="market-price-table"><colgroup><col className="market-check-col" /><col className="market-product-col" /><col className="market-price-col" />{!catalogOnly ? competitorColumns.map((shop) => <col key={shop.key} className="market-price-col" />) : null}<col className="market-action-col" /></colgroup><thead><tr><th className="market-check"><input type="checkbox" checked={visibleRows.length > 0 && visibleRows.every((row) => selectedIds.has(row.id))} onChange={selectAllVisible} aria-label="Chọn tất cả SKU đang hiển thị" /></th><th className="market-product-head">Sách / biến thể</th><th className="market-own-head"><span className="market-column-avatar">{selectedShop ? 'AB' : '—'}</span><strong>{selectedShopLabel}</strong><small>{selectedShop ? 'Giá shop của bạn' : 'Chọn shop để xem giá'}</small></th>{!catalogOnly ? competitorColumns.map((shop, index) => <th key={shop.key}><a href={shop.shopUrl} target="_blank" rel="noreferrer" title={shop.fullName}><span className="market-column-index">0{index + 1}</span><strong>{shop.label}</strong><small>Giá trước voucher <Icon name="external" /></small></a></th>) : null}<th /></tr></thead><tbody>{visibleRows.length ? visibleRows.map((row, index) => <PriceTableRow key={row.id} row={row} index={(page - 1) * PAGE_SIZE + index} catalogOnly={catalogOnly} selected={selectedIds.has(row.id)} onSelect={() => toggleSelected(row.id)} onOpen={() => setSelectedRow(row)} onKeyDown={(event) => onRowKeyDown(event, row)} />) : <tr><td className="market-empty" colSpan={catalogOnly ? 4 : 9}>{dataSource === 'loading' ? 'Đang tải danh mục sách…' : loadError ? 'Chưa tải được danh mục. Kiểm tra kết nối ở trên.' : 'Không có sách phù hợp bộ lọc.'}</td></tr>}</tbody></table></div>
           <div className="market-grid-footer"><span>{filteredRows.length ? (page - 1) * PAGE_SIZE + 1 : 0}–{Math.min(page * PAGE_SIZE, filteredRows.length)}<span> / {new Intl.NumberFormat('vi-VN').format(filteredRows.length)} SKU</span></span><div><button disabled={page === 1} aria-label="Trang trước" onClick={() => setPage(page - 1)}><Icon name="chevronLeft" /></button><span>Trang {page} / {pageCount}</span><button disabled={page >= pageCount} aria-label="Trang sau" onClick={() => setPage(page + 1)}><Icon name="chevronRight" /></button></div></div>
         </section>
         <footer className="market-statusline"><span><span className={isLive ? 'market-online' : 'market-offline'} />{sourceLabel}{lastSync ? ` · ${lastSync}` : ''}</span><span title={competitorFeedErrors.join(' · ')}>{feedReady ? `${competitorFeedCount} nguồn giá đang hoạt động` : 'Chưa có giá đối thủ được xác minh'}{competitorShopCount ? ` · ${competitorShopCount} shop` : ''}{competitorScope?.limited ? ` · Phạm vi ${competitorScope.requestedRows} SKU` : ''}{competitorSource === 'error' ? ' · Nguồn đang lỗi' : ''}</span></footer>
@@ -208,13 +276,13 @@ function normalizeCatalogRow (row: { itemId: string, modelId: string, sku: strin
   return { id: `${row.itemId}:${row.modelId}`, sku: row.sku || `${row.itemId}:${row.modelId}`, title: row.name || `Shopee item ${row.itemId}`, author: row.author || '', competitor: '', competitorPrice: null, currentPrice: row.currentPrice, proposedPrice: null, floorPrice: null, ceilingPrice: null, status: 'pending', updatedAt: formatObservedAt(row.observedAt), reason: 'Bảng đối thủ chưa sẵn sàng, đang hiển thị catalog shop', imageUrl: row.imageUrl, imageId: row.imageId, imageSource: row.imageSource, ownObservedAt: row.observedAt, competitorSource: 'none', competitorSourceName: 'none', modelName: row.modelName, isbn: row.isbn, ean: row.ean, stock: row.stock, productUrl: row.productUrl }
 }
 
-function normalizeSkuRow (row: { id: string, sku: string, itemId: string, modelId: string, name: string | null, modelName: string | null, imageUrl: string | null, imageId: string | null, imageSource: 'model' | 'product' | null, currentPrice: number, originalPrice: number, observedAt: string }): PriceRow {
-  return { id: row.id, sku: row.sku, title: row.name || `Shopee item ${row.itemId}`, author: row.modelName || '', competitor: '', competitorPrice: null, currentPrice: row.currentPrice, proposedPrice: null, floorPrice: null, ceilingPrice: null, status: 'pending', updatedAt: formatObservedAt(row.observedAt), reason: 'Chưa có dữ liệu đối thủ để so sánh', imageUrl: row.imageUrl, imageId: row.imageId, imageSource: row.imageSource, ownObservedAt: row.observedAt, competitorSource: 'none', competitorSourceName: 'none' }
-}
-
 function sortValue (row: PriceRow, key: SortKey) { if (key === 'title') return row.title; if (key === 'currentPrice') return row.currentPrice ?? -1; if (key === 'competitorPrice') return row.competitorPrice ?? -1; return row.reductionVnd ?? -1 }
 function formatObservedAt (value: string | null | undefined) { return value ? new Date(value).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' }) : 'Chưa có' }
 function readableApiError (value: unknown) { return value === 'refresh_token_not_configured' ? 'Shopee cần cấp quyền lại: refresh token chưa có hoặc đã hết hạn.' : value === 'reauthorization_required' ? 'Shopee từ chối token hiện tại. Hãy cấp quyền lại cho shop.' : typeof value === 'string' && value ? value : 'Chưa đọc được dữ liệu Shopee.' }
+function isAuthorizedShop (shop: ShopConnection) { return shop.status === 'connected' }
+function readStoredShopId () {
+  try { return window.localStorage.getItem(SELECTED_SHOP_STORAGE_KEY) ?? '' } catch { return '' }
+}
 
 function ProductImage ({ src, alt, source, className }: { src?: string | null, alt: string, source?: 'model' | 'product' | null, className?: string }) {
   const [failed, setFailed] = useState(false)

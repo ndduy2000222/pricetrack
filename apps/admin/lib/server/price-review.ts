@@ -1,4 +1,5 @@
 import type { CatalogRow } from './catalog'
+import { isPastOrPresentObservation, numberOrNull } from './price-integrity'
 import type { CompetitorComparison } from '../mock-data'
 import { affiliateConfigured, searchAffiliateProducts, type AffiliateProductOffer } from './shopee-affiliate'
 import { supabaseHeaders } from './supabase-http'
@@ -116,7 +117,6 @@ const similarity = (a: string | null | undefined, b: string | null | undefined) 
 }
 const same = (a: string | null | undefined, b: string | null | undefined) => Boolean(a && b && normalize(a) === normalize(b))
 const differsWhenBothPresent = (a: string | null | undefined, b: string | null | undefined) => Boolean(a && b && !same(a, b))
-const numberOrNull = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : null
 const shopMatches = (offer: AffiliateProductOffer, profile: CompetitorShopProfile) => {
   if (profile.key === offer.shopId || profile.handle === offer.shopId) return true
   const name = normalize(offer.shopName)
@@ -128,7 +128,8 @@ function comparablePrice (competitor: CompetitorRow) {
   if (base === null) return null
   const shipping = competitor.shippingGenerallyApplicable ? (numberOrNull(competitor.shipping) ?? 0) : 0
   const voucher = competitor.voucherGenerallyApplicable ? (numberOrNull(competitor.voucher) ?? 0) : 0
-  return Math.max(0, base + shipping - voucher)
+  const comparable = base + shipping - voucher
+  return Number.isFinite(comparable) && comparable > 0 ? comparable : null
 }
 
 function match (own: CatalogRow, candidate: CompetitorRow) {
@@ -165,7 +166,7 @@ function comparisonForShop (own: CatalogRow, shop: CompetitorShopStatus, competi
     .filter((candidate) => (!candidate.sourceRowKey || candidate.sourceRowKey === `${own.itemId}:${own.modelId}`) && (candidate.shopKey === shop.key || (!candidate.shopKey && normalize(candidate.shop) === normalize(shop.name))))
     .map((candidate) => ({ candidate, match: match(own, candidate), price: comparablePrice(candidate), observedAt: Date.parse(candidate.observedAt) }))
     .filter((entry) => entry.price !== null && Number.isFinite(entry.observedAt))
-  const fresh = candidates.filter((entry) => now - entry.observedAt <= maxAgeMinutes * 60_000).sort((a, b) => (a.price as number) - (b.price as number))
+  const fresh = candidates.filter((entry) => isPastOrPresentObservation(entry.observedAt, now) && now - entry.observedAt <= maxAgeMinutes * 60_000).sort((a, b) => (a.price as number) - (b.price as number))
   const valid = fresh.filter((entry) => entry.match.confidence > 0)
   const entry = valid[0] ?? fresh[0]
   if (valid[0]) {
@@ -188,7 +189,7 @@ export function buildReview (catalog: CatalogRow[], competitors: CompetitorRow[]
     const key = `${own.itemId}:${own.modelId}`
     const discoveryAttempted = !options.scope || options.scope.rowKeys.includes(key)
     const discoveredCompetitors = discoveryAttempted ? competitors : []
-    const candidates = discoveredCompetitors.map((candidate) => ({ candidate, match: match(own, candidate), price: comparablePrice(candidate), observedAt: Date.parse(candidate.observedAt) })).filter((entry) => entry.match.confidence > 0 && entry.price !== null && Number.isFinite(entry.observedAt) && now - entry.observedAt <= settings.maxAgeMinutes * 60_000)
+    const candidates = discoveredCompetitors.map((candidate) => ({ candidate, match: match(own, candidate), price: comparablePrice(candidate), observedAt: Date.parse(candidate.observedAt) })).filter((entry) => entry.match.confidence > 0 && entry.price !== null && Number.isFinite(entry.observedAt) && isPastOrPresentObservation(entry.observedAt, now) && now - entry.observedAt <= settings.maxAgeMinutes * 60_000)
     const ordered = candidates.sort((a, b) => (a.price as number) - (b.price as number)); const chosen = ordered[0]
     const prices = ordered.map((entry) => entry.price as number); const lowest = prices[0] ?? null; const median = prices.length ? prices.length % 2 ? prices[Math.floor(prices.length / 2)] : (prices[prices.length / 2 - 1] + prices[prices.length / 2]) / 2 : null
     const cost = numberOrNull(settings.costs[own.sku ?? '']); const fee = settings.fee; const operations = settings.operations; const margin = settings.margin
@@ -226,8 +227,8 @@ function feedRows (body: unknown, fallbackShop: string, fallbackShopKey: string)
   const rows: unknown[] = Array.isArray(body) ? body : Array.isArray(bodyRecord.rows) ? bodyRecord.rows : []
   return rows.filter((row): row is Record<string, unknown> => {
     const record = row && typeof row === 'object' ? row as Record<string, unknown> : null
-    return Boolean(record && typeof record.name === 'string' && typeof record.productUrl === 'string' && Number.isFinite(Number(record.price)) && typeof record.observedAt === 'string')
-  }).map((row) => ({ ...row, shopKey: fallbackShopKey, shop: typeof row.shop === 'string' && row.shop ? row.shop : fallbackShop, price: Number(row.price), available: row.available === true, listPrice: row.listPrice == null ? undefined : Number(row.listPrice), promoPrice: row.promoPrice == null ? undefined : Number(row.promoPrice), imageUrl: typeof row.imageUrl === 'string' ? row.imageUrl : undefined, imageId: typeof row.imageId === 'string' ? row.imageId : undefined }) as CompetitorRow)
+    return Boolean(record && typeof record.name === 'string' && typeof record.productUrl === 'string' && numberOrNull(record.price) !== null && typeof record.observedAt === 'string' && isPastOrPresentObservation(record.observedAt))
+  }).map((row) => ({ ...row, shopKey: fallbackShopKey, shop: typeof row.shop === 'string' && row.shop ? row.shop : fallbackShop, price: numberOrNull(row.price) as number, available: row.available === true, listPrice: numberOrNull(row.listPrice) ?? undefined, promoPrice: numberOrNull(row.promoPrice) ?? undefined, imageUrl: typeof row.imageUrl === 'string' ? row.imageUrl : undefined, imageId: typeof row.imageId === 'string' ? row.imageId : undefined }) as CompetitorRow)
 }
 
 function competitorSupabaseConfig () {
@@ -239,7 +240,7 @@ function competitorSupabaseConfig () {
 function storedCompetitorRow (value: unknown): CompetitorRow | null {
   if (!value || typeof value !== 'object') return null
   const row = value as Record<string, unknown>
-  if (typeof row.shop_key !== 'string' || typeof row.name !== 'string' || typeof row.product_url !== 'string' || typeof row.observed_at !== 'string') return null
+  if (typeof row.shop_key !== 'string' || typeof row.name !== 'string' || typeof row.product_url !== 'string' || typeof row.observed_at !== 'string' || !isPastOrPresentObservation(row.observed_at)) return null
   const price = numberOrNull(row.price)
   if (price === null) return null
   return {
@@ -370,7 +371,7 @@ export async function persistCompetitorFeed (feed: CompetitorFeedResult) {
   const config = competitorSupabaseConfig()
   if (!config || !feed.rows.length) return { saved: 0, skipped: !config ? 'supabase_not_configured' : 'no_rows' }
   const profiles = new Map(competitorShopProfiles().map((profile) => [profile.key, profile]))
-  const rows = feed.rows.map((row) => {
+  const rows = feed.rows.filter((row) => isPastOrPresentObservation(row.observedAt)).map((row) => {
     const profile = row.shopKey ? profiles.get(row.shopKey) : null
     return {
       shop_key: row.shopKey ?? profile?.key ?? normalize(row.shop),

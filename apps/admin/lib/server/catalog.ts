@@ -63,16 +63,18 @@ export function rowFromModel (item: ShopeeItem, model: ShopeeModel | null, shopI
 }
 
 export async function createClientFromEnvironment () {
-  return createClientForShop(process.env.SHOPEE_SHOP_ID ?? '')
+  throw new Error('shop_context_required')
 }
 
 export async function createClientForShop (shopId: string) {
   const { readStoredShopeeTokens, persistShopeeTokens } = await import('./shopee-token-store')
-  const stored = shopId ? await readStoredShopeeTokens(shopId) : null
-  const accessToken = stored?.accessToken ?? process.env.SHOPEE_ACCESS_TOKEN
-  const refreshToken = stored?.refreshToken ?? process.env.SHOPEE_REFRESH_TOKEN
+  if (!/^\d+$/.test(shopId)) throw new Error('invalid_shopee_shop_id')
+  const stored = await readStoredShopeeTokens(shopId)
+  if (!stored?.refreshToken) throw new Error('refresh_token_not_configured')
+  const accessToken = stored.accessToken
+  const refreshToken = stored.refreshToken
   const client = createShopeeOpenApiClient({ partnerId: process.env.SHOPEE_PARTNER_ID, partnerKey: process.env.SHOPEE_PARTNER_KEY, accessToken, refreshToken, accessTokenExpiresAt: stored?.accessTokenExpiresAt ?? process.env.SHOPEE_ACCESS_TOKEN_EXPIRES_AT, shopId, apiBaseUrl: process.env.SHOPEE_API_BASE_URL, onTokensRefreshed: async (tokens) => { if (shopId && process.env.SUPABASE_URL && (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY) && process.env.SHOPEE_TOKEN_ENCRYPTION_KEY) await persistShopeeTokens(shopId, tokens) } })
-  return { client, shopId, tokenSource: stored ? 'encrypted_supabase' : (refreshToken ? 'env_bootstrap' : 'missing_refresh_token') as string }
+  return { client, shopId, tokenSource: 'encrypted_supabase' as const }
 }
 
 export async function buildCatalogRows (options: { client: ReturnType<typeof createShopeeOpenApiClient>, shopId: string, itemIds: string[] }) {
@@ -98,8 +100,8 @@ export async function buildCatalogRows (options: { client: ReturnType<typeof cre
   return { rows, observedAt, itemCount: itemIds.length }
 }
 
-export async function syncCatalog (options: { all?: boolean, maxItems?: number } = {}) {
-  const { client, shopId, tokenSource } = await createClientFromEnvironment()
+export async function syncCatalog (options: { shopId: string, all?: boolean, maxItems?: number }) {
+  const { client, shopId, tokenSource } = await createClientForShop(options.shopId)
   if (!client.configured) throw new Error('not_configured')
   const listed = options.all === false ? await client.getItemList({ offset: 0, pageSize: Math.min(options.maxItems ?? 100, 100) }) : await client.getAllItemIds()
   const itemIds = options.all === false ? listed.items : listed.items.slice(0, options.maxItems ?? listed.items.length)

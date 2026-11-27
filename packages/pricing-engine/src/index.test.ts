@@ -79,6 +79,67 @@ describe('calculatePricingDecision', () => {
     expect(result.reasonCodes).toEqual(['NO_FRESH_COMPETITOR_DATA']);
   });
 
+  it('blocks observations from the future instead of treating them as fresh', () => {
+    const result = calculatePricingDecision(baseInput({
+      observations: [{
+        competitorId: 'c-future', itemId: 'item-1', modelId: 'model-red', price: 70_000,
+        available: true, observedAt: new Date('2026-11-23T10:01:00.000Z'), source: 'fixture'
+      }]
+    }));
+
+    expect(result.status).toBe('blocked');
+    expect(result.validObservationCount).toBe(0);
+    expect(result.reasonCodes).toEqual(['NO_FRESH_COMPETITOR_DATA']);
+  });
+
+  it('ignores non-positive and non-finite competitor prices', () => {
+    const result = calculatePricingDecision(baseInput({
+      observations: [
+        { competitorId: 'zero', itemId: 'item-1', modelId: 'model-red', price: 0, available: true, observedAt: new Date('2026-11-23T09:55:00.000Z'), source: 'fixture' },
+        { competitorId: 'negative', itemId: 'item-1', modelId: 'model-red', price: -1, available: true, observedAt: new Date('2026-11-23T09:55:00.000Z'), source: 'fixture' },
+        { competitorId: 'nan', itemId: 'item-1', modelId: 'model-red', price: Number.NaN, available: true, observedAt: new Date('2026-11-23T09:55:00.000Z'), source: 'fixture' },
+        { competitorId: 'valid', itemId: 'item-1', modelId: 'model-red', price: 95_000, available: true, observedAt: new Date('2026-11-23T09:55:00.000Z'), source: 'fixture' }
+      ]
+    }));
+
+    expect(result.status).toBe('proposal');
+    expect(result.referencePrice).toBe(95_000);
+    expect(result.validObservationCount).toBe(1);
+  });
+
+  it('blocks NaN and invalid price bounds without producing a proposal', () => {
+    const invalidFloor = calculatePricingDecision(baseInput({ floorPrice: Number.NaN }));
+    const invertedBounds = calculatePricingDecision(baseInput({ floorPrice: 130_000, ceilingPrice: 120_000 }));
+    const invalidRule = calculatePricingDecision(baseInput({ rule: { mode: 'amount', amount: Number.NaN } }));
+
+    expect(invalidFloor.status).toBe('blocked');
+    expect(invalidFloor.reasonCodes).toEqual(['INVALID_PRICE_BOUNDS']);
+    expect(invertedBounds.status).toBe('blocked');
+    expect(invertedBounds.reasonCodes).toEqual(['INVALID_PRICE_BOUNDS']);
+    expect(invalidRule.status).toBe('blocked');
+    expect(invalidRule.reasonCodes).toEqual(['INVALID_PRICING_INPUT']);
+    expect(Number.isNaN(invalidRule.proposedPrice)).toBe(false);
+  });
+
+  it('keeps proposals inside both configured bounds', () => {
+    const lower = calculatePricingDecision(baseInput({
+      floorPrice: 94_000,
+      rule: { mode: 'amount', amount: 100_000 }
+    }));
+    const upper = calculatePricingDecision(baseInput({
+      ceilingPrice: 94_000,
+      allowPriceIncrease: true,
+      rule: { mode: 'amount', amount: 0 }
+    }));
+
+    expect(lower.status).toBe('proposal');
+    expect(lower.proposedPrice).toBeGreaterThanOrEqual(94_000);
+    expect(lower.proposedPrice).toBeLessThanOrEqual(120_000);
+    expect(upper.status).toBe('proposal');
+    expect(upper.proposedPrice).toBeGreaterThanOrEqual(80_000);
+    expect(upper.proposedPrice).toBeLessThanOrEqual(94_000);
+  });
+
   it('does not increase price unless explicitly allowed', () => {
     const result = calculatePricingDecision(baseInput({
       currentPrice: 90_000,

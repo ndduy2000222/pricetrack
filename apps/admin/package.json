@@ -8,7 +8,9 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "lint": "eslint . --max-warnings=0"
+    "lint": "eslint . --max-warnings=0",
+    "typecheck": "tsc --noEmit --incremental false",
+    "test": "vitest run"
   },
   "dependencies": {
     "@congminh1254/shopee-sdk": "^2.14.1",
@@ -23,6 +25,7 @@
     "@types/react-dom": "19.0.2",
     "eslint": "10.15.0",
     "eslint-config-next": "16.4.6",
-    "typescript": "5.7.2"
+    "typescript": "5.7.2",
+    "vitest": "^3.2.4"
   }
 }

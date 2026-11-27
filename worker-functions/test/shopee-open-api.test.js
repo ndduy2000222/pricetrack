@@ -1,6 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { MODEL_LIST_PATH, buildShopeeSignature, createShopeeOpenApiClient } = require('../src/price-control/shopee-open-api-client')
+const { createShopeeSellerAdapter } = require('../src/price-control/shopee-seller-adapter')
 
 const credentials = { partnerId: '123', partnerKey: 'secret', accessToken: 'token', shopId: '456' }
 
@@ -34,4 +35,10 @@ test('reports missing credentials without making a network request', async () =>
   const client = createShopeeOpenApiClient({ credentials: {} })
   assert.equal(client.status, 'not_configured')
   await assert.rejects(() => client.getModelList('77'), { code: 'not_configured' })
+})
+
+test('keeps seller writes disabled when credentials are absent', async () => {
+  const adapter = createShopeeSellerAdapter({ credentials: {} })
+  assert.equal(adapter.status, 'not_configured')
+  assert.deepEqual(await adapter.writePromotion({}), { status: 'not_configured' })
 })

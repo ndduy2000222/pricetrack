@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { createClientFromEnvironment } from '../../../../../../lib/server/catalog'
+import { createClientForShop } from '../../../../../../lib/server/catalog'
+import { contextError, requireShopContext } from '../../../../../../lib/server/shop-context'
 import type { DiscountItemUpdate } from '../../../../../../lib/server/shopee-open-api'
 
 export const dynamic = 'force-dynamic'
@@ -30,6 +31,7 @@ function validItemList (value: unknown) {
 
 export async function POST (request: Request, context: { params: Promise<{ discountId: string }> }) {
   if (!authorized(request)) return NextResponse.json({ status: 'unauthorized' }, { status: 401, headers: { 'cache-control': 'no-store' } })
+  try { await requireShopContext(request, 'price_editor') } catch (error) { const auth = contextError(error); return NextResponse.json({ status: 'error', code: auth.code }, { status: auth.status }) }
 
   let body: Record<string, unknown>
   try { body = await request.json() as Record<string, unknown> } catch { return NextResponse.json({ status: 'invalid_request', message: 'Body phải là JSON' }, { status: 400 }) }
@@ -41,7 +43,8 @@ export async function POST (request: Request, context: { params: Promise<{ disco
   if (!itemList) return NextResponse.json({ status: 'invalid_request', message: 'item_list phải có 1-50 sản phẩm và giá hợp lệ' }, { status: 400 })
 
   try {
-    const { client } = await createClientFromEnvironment()
+    const shopContext = await requireShopContext(request, 'price_editor')
+    const { client } = await createClientForShop(shopContext.shopeeShopId)
     if (!client.configured) return NextResponse.json({ status: 'not_configured', message: 'Shopee API credentials chưa sẵn sàng' }, { status: 503 })
     const result = await client.updateDiscountItem({ discountId: Number(discountId), itemList: itemList as DiscountItemUpdate[] }, true)
     return NextResponse.json({ status: result.error ? 'upstream_error' : 'updated', requestId: result.request_id, error: result.error || null, message: result.message || null, response: result.response ?? null }, { status: result.error ? 502 : 200, headers: { 'cache-control': 'no-store' } })

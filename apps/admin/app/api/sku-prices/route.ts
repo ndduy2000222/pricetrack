@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { classifyShopeeError, type ShopeeItem, type ShopeeModel } from '../../../lib/server/shopee-open-api'
-import { createClientFromEnvironment } from '../../../lib/server/catalog'
+import { createClientForShop } from '../../../lib/server/catalog'
+import { contextError, requireShopContext } from '../../../lib/server/shop-context'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,11 +34,16 @@ function toApiRow (model: ShopeeModel, item: ShopeeItem | undefined, requestId: 
   }
 }
 
-export async function GET () {
-  const trackedSkus = parseTrackedSkus(process.env.SHOPEE_TRACKED_SKUS)
-  let client: Awaited<ReturnType<typeof createClientFromEnvironment>>['client']
+export async function GET (request: Request) {
+  let context: Awaited<ReturnType<typeof requireShopContext>>
+  try { context = await requireShopContext(request, 'viewer') } catch (error) { const auth = contextError(error); return NextResponse.json({ status: 'error', rows: [], code: auth.code }, { status: auth.status }) }
+  const url = new URL(request.url)
+  const itemId = url.searchParams.get('item_id')?.trim() ?? ''
+  const modelId = url.searchParams.get('model_id')?.trim() ?? ''
+  const trackedSkus = /^\d+$/.test(itemId) ? [{ itemId, ...( /^\d+$/.test(modelId) ? { modelId } : {}) }] : []
+  let client: Awaited<ReturnType<typeof createClientForShop>>['client']
   try {
-    client = (await createClientFromEnvironment()).client
+    client = (await createClientForShop(context.shopeeShopId)).client
   } catch (error) {
     console.error('sku_price_token_store_failed', error instanceof Error ? error.message : 'unknown_error')
     return NextResponse.json({ status: 'error', rows: [], checkedAt: new Date().toISOString(), message: 'Token Shopee chưa sẵn sàng' }, { status: 503, headers: { 'cache-control': 'no-store' } })

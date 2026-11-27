@@ -275,5 +275,13 @@ export function createShopeeOpenApiClient (credentials: Credentials) {
       if (!approved) throw new Error('discount_update_requires_approval')
       return sdk.discount.updateDiscountItem({ discount_id: input.discountId, item_list: input.itemList })
     },
+    async getDiscountList (options: { status?: string, pageNo?: number, pageSize?: number } = {}) {
+      if (!configured) throw new Error('not_configured')
+      return sdk.discount.getDiscountList({ discount_status: options.status ?? 'all', page_no: options.pageNo ?? 1, page_size: Math.min(options.pageSize ?? 100, 100) })
+    },
+    async getDiscount (discountId: number, options: { pageNo?: number, pageSize?: number } = {}) {
+      if (!configured) throw new Error('not_configured')
+      return sdk.discount.getDiscount({ discount_id: discountId, page_no: options.pageNo ?? 1, page_size: Math.min(options.pageSize ?? 100, 100) })
+    },
   }
 }

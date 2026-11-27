@@ -83,3 +83,20 @@ test('auto does not retry blindly when current price changed', async () => {
   assert.equal(writes.length, 0)
   assert.equal(results[0].execution.reasonCodes[0], 'CURRENT_PRICE_CHANGED')
 })
+
+test('paused models do not collect evidence or attempt execution', async () => {
+  let collected = 0
+  let writes = 0
+  const results = await runPricingCycle({
+    models: [{ ...model, paused: true }],
+    competitorSource: { async collect() { collected += 1; return [] } },
+    sellerAdapter: { async readCurrent() { throw new Error('should not read') }, async writePromotion() { writes += 1; return { status: 'ok' } }, async readBack() { throw new Error('should not read back') } },
+    buildPricingInput: () => ({}),
+    calculateDecision: () => proposal,
+    mode: 'auto'
+  })
+
+  assert.equal(collected, 0)
+  assert.equal(writes, 0)
+  assert.deepEqual(results[0].decision.reasonCodes, ['SKU_PAUSED'])
+})

@@ -58,23 +58,20 @@ function toCatalogRow (rawValue: unknown): CatalogRow {
   }
 }
 
-async function resolveConnection (config: { url: string, key: string }) {
-  const explicitId = process.env.SHOP_CONNECTION_ID
-  if (explicitId) return { id: explicitId, shopId: process.env.SHOPEE_SHOP_ID ?? null }
-  const shopId = process.env.SHOPEE_SHOP_ID
-  const query = new URLSearchParams({ select: 'id,shop_id', order: 'created_at.desc', limit: '1' })
-  if (shopId) query.set('shop_id', `eq.${shopId}`)
+async function resolveConnection (config: { url: string, key: string }, connectionId: string) {
+  if (!connectionId) return null
+  const query = new URLSearchParams({ select: 'id,shop_id', id: `eq.${connectionId}`, limit: '1' })
   const rows = await readJson(`${config.url}/rest/v1/shop_connections?${query.toString()}`, config.key)
   const connection = asRecord(Array.isArray(rows) ? rows[0] : null)
-  return connection.id ? { id: String(connection.id), shopId: connection.shop_id == null ? shopId ?? null : String(connection.shop_id) } : null
+  return connection.id ? { id: String(connection.id), shopId: connection.shop_id == null ? null : String(connection.shop_id) } : null
 }
 
-export async function readStoredCatalog (): Promise<StoredCatalog | null> {
+export async function readStoredCatalog (connectionId: string): Promise<StoredCatalog> {
   const config = supabaseConfig()
-  if (!config) return null
+  if (!config) throw new Error('supabase_not_configured')
   try {
-    const connection = await resolveConnection(config)
-    if (!connection) return null
+    const connection = await resolveConnection(config, connectionId)
+    if (!connection) return { connectionId, shopId: null, rows: [], observedAt: null }
     const rows: CatalogRow[] = []
     let offset = 0
     const pageSize = 1000
@@ -92,10 +89,9 @@ export async function readStoredCatalog (): Promise<StoredCatalog | null> {
       if (batch.length < pageSize) break
       offset += batch.length
     }
-    if (!rows.length) return null
     const observedAt = rows.map((row) => row.observedAt).filter(Boolean).sort().at(-1) ?? null
     return { connectionId: connection.id, shopId: connection.shopId, rows, observedAt }
-  } catch {
-    return null
+  } catch (error) {
+    throw error instanceof Error ? error : new Error('stored_catalog_read_failed')
   }
 }

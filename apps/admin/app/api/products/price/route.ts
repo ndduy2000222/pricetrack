@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { createClientFromEnvironment } from '../../../../lib/server/catalog'
+import { createClientForShop } from '../../../../lib/server/catalog'
+import { contextError, requireShopContext } from '../../../../lib/server/shop-context'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,10 +15,12 @@ export async function GET (request: Request) {
       message: 'Cần truyền item_id và model_id dạng số'
     }, { status: 400, headers: { 'cache-control': 'no-store' } })
   }
+  let context: Awaited<ReturnType<typeof requireShopContext>>
+  try { context = await requireShopContext(request, 'viewer') } catch (error) { const auth = contextError(error); return NextResponse.json({ status: 'error', code: auth.code }, { status: auth.status }) }
 
-  let client: Awaited<ReturnType<typeof createClientFromEnvironment>>['client']
+  let client: Awaited<ReturnType<typeof createClientForShop>>['client']
   try {
-    client = (await createClientFromEnvironment()).client
+    client = (await createClientForShop(context.shopeeShopId)).client
   } catch (error) {
     console.error('product_price_token_store_failed', error instanceof Error ? error.message : 'unknown_error')
     return NextResponse.json({ status: 'upstream_error', message: 'Token Shopee chưa sẵn sàng' }, { status: 503, headers: { 'cache-control': 'no-store' } })

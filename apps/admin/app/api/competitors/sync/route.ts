@@ -14,7 +14,9 @@ function authorized (request: Request) {
 
 export async function POST (request: Request) {
   if (!authorized(request)) return NextResponse.json({ status: 'unauthorized' }, { status: 401 })
-  const stored = await readStoredCatalog()
+  const connectionId = new URL(request.url).searchParams.get('connection_id')?.trim() ?? ''
+  if (!connectionId) return NextResponse.json({ status: 'error', code: 'shop_context_required' }, { status: 400 })
+  const stored = await readStoredCatalog(connectionId)
   if (!stored?.rows.length) return NextResponse.json({ status: 'error', code: 'catalog_not_configured' }, { status: 503 })
   const feed = await loadCompetitorFeed(stored.rows, { forceDiscovery: true })
   const persisted = await persistCompetitorFeed(feed)

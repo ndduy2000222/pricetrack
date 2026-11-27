@@ -1,5 +1,28 @@
 export type RowStatus = 'within' | 'review' | 'blocked' | 'pending'
 
+export type CompetitorComparison = {
+  shopKey?: string
+  shop: string
+  shopUrl?: string | null
+  name: string | null
+  variant: string | null
+  sku: string | null
+  modelId: string | null
+  imageUrl?: string | null
+  listPrice: number | null
+  promoPrice: number | null
+  shipping: number | null
+  voucher: number | null
+  comparablePrice: number | null
+  url: string | null
+  observedAt: string | null
+  priceBasis: string | null
+  confidence: number | null
+  confidenceReason: string | null
+  status?: 'matched' | 'candidate' | 'no_match' | 'not_configured' | 'error' | 'stale' | 'not_checked'
+  reason?: string | null
+}
+
 export type PriceRow = {
   id: string
   sku: string
@@ -35,6 +58,7 @@ export type PriceRow = {
   confidenceReason?: string | null
   competitorSource?: string | null
   competitorSourceName?: string | null
+  competitorComparisons?: CompetitorComparison[]
 }
 
 export const priceRows: PriceRow[] = [

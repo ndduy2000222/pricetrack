@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import type { ShopeeItem, ShopeeModel } from '../../../lib/server/shopee-open-api'
+import { classifyShopeeError, type ShopeeItem, type ShopeeModel } from '../../../lib/server/shopee-open-api'
 import { createClientFromEnvironment } from '../../../lib/server/catalog'
 
 export const dynamic = 'force-dynamic'
@@ -57,6 +57,7 @@ export async function GET () {
     return NextResponse.json({ status: 'live', rows, checkedAt: new Date().toISOString(), pollIntervalSeconds: 30 }, { headers: { 'cache-control': 'no-store' } })
   } catch (error) {
     console.error('sku_price_tracking_failed', error instanceof Error ? error.message : 'unknown_error')
-    return NextResponse.json({ status: 'error', rows: [], checkedAt: new Date().toISOString(), message: 'Không đọc được giá SKU từ Shopee' }, { status: 502, headers: { 'cache-control': 'no-store' } })
+    const code = classifyShopeeError(error)
+    return NextResponse.json({ status: 'error', code, rows: [], checkedAt: new Date().toISOString(), message: code === 'refresh_token_not_configured' ? 'refresh_token_not_configured' : code === 'reauthorization_required' ? 'reauthorization_required' : 'Không đọc được giá SKU từ Shopee' }, { status: 502, headers: { 'cache-control': 'no-store' } })
   }
 }

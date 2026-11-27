@@ -15,7 +15,7 @@ API có thể trả tên, SKU, item/model ID, giá, tồn kho, trạng thái, đ
 
 ## Nguồn dữ liệu đối thủ
 
-Shopee Open API shop-level đang dùng trong ứng dụng chỉ phục vụ catalog và giá của shop Alpha Books. Không coi endpoint đó là API tìm giá của shop khác. Bộ phân tích chỉ nhận một feed đối thủ đã được người quản trị phê duyệt qua `SHOPEE_COMPETITOR_FEED_URL` và chỉ bật khi `SHOPEE_COMPETITOR_SOURCE_APPROVED=true`.
+Shopee Open API shop-level đang dùng trong ứng dụng chỉ phục vụ catalog và giá của shop Alpha Books. Không coi endpoint đó là API tìm giá của shop khác. Bộ phân tích nhận tối đa 5 feed đối thủ đã được người quản trị phê duyệt qua `SHOPEE_COMPETITOR_FEED_URL_1` tới `_5` (vẫn hỗ trợ biến cũ `SHOPEE_COMPETITOR_FEED_URL`) và chỉ bật khi `SHOPEE_COMPETITOR_SOURCE_APPROVED=true`. Feed có thể do một scraper/worker được phép vận hành, nhưng Price Control chỉ nhận JSON đã chuẩn hóa; không tự vượt CAPTCHA, không dùng proxy né chặn và không đưa scraper chạy trong request Vercel.
 
 Feed phải cung cấp tối thiểu: `isbn` hoặc `ean` nếu có, tên, tác giả, nhà xuất bản, ấn bản, loại bìa, số tập/combo, trạng thái còn hàng, điều kiện hàng, shop, giá niêm yết, giá khuyến mãi, phí vận chuyển, voucher có áp dụng đại trà, link Shopee và `observedAt`. Không có feed hợp lệ thì hệ thống không tự cào trang Shopee và không tạo đề xuất cạnh tranh.
 

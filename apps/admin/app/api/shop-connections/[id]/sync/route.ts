@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { buildCatalogRows, createClientForShop } from '../../../../../lib/server/catalog'
+import { classifyShopeeError } from '../../../../../lib/server/shopee-open-api'
 import { completeSyncConnection, createSyncRun, getConnection, getSyncRun, isPortalAdmin, saveCatalogRows, updateSyncRun } from '../../../../../lib/server/shop-portal'
 
 export const dynamic = 'force-dynamic'
@@ -9,7 +10,7 @@ function dbRow (row: Awaited<ReturnType<typeof buildCatalogRows>>['rows'][number
 }
 
 export async function POST (request: Request, context: { params: Promise<{ id: string }> }) {
-  if (!isPortalAdmin(request)) return NextResponse.json({ status: 'unauthorized' }, { status: 401 })
+  if (!await isPortalAdmin(request)) return NextResponse.json({ status: 'unauthorized' }, { status: 401 })
   const { id } = await context.params
   try {
     const connection = await getConnection(id); if (!connection) return NextResponse.json({ status: 'not_found' }, { status: 404 })
@@ -30,8 +31,9 @@ export async function POST (request: Request, context: { params: Promise<{ id: s
     if (!hasNext) await completeSyncConnection(id, { status: 'connected', last_catalog_sync_at: new Date().toISOString(), last_error: null })
     return NextResponse.json({ status: 'ok', done: !hasNext, run: { ...run, ...nextRun } }, { headers: { 'cache-control': 'no-store' } })
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'sync_failed'
+    const code = classifyShopeeError(error)
+    const message = code === 'refresh_token_not_configured' ? 'refresh_token_not_configured' : code === 'reauthorization_required' ? 'reauthorization_required' : error instanceof Error ? error.message : 'sync_failed'
     try { await completeSyncConnection(id, { status: 'error', last_error: message }) } catch { /* preserve original sync error */ }
-    return NextResponse.json({ status: 'error', message }, { status: 500, headers: { 'cache-control': 'no-store' } })
+    return NextResponse.json({ status: 'error', code, message }, { status: 500, headers: { 'cache-control': 'no-store' } })
   }
 }

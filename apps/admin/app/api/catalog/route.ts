@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import * as XLSX from 'xlsx'
 import { catalogCsv, syncCatalog } from '../../../lib/server/catalog'
 import { readStoredCatalog } from '../../../lib/server/stored-catalog'
+import { classifyShopeeError } from '../../../lib/server/shopee-open-api'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -29,7 +30,8 @@ export async function GET (request: Request) {
     return NextResponse.json({ status: 'live', ...result, unsupportedFields: [...new Set(result.rows.flatMap((row) => row.unsupportedFields))] }, { headers: { 'cache-control': 'no-store' } })
   } catch (error) {
     console.error('catalog_sync_failed', error instanceof Error ? error.message : 'unknown_error')
-    const message = error instanceof Error && ['not_configured', 'refresh_token_not_configured', 'token_store_not_configured'].includes(error.message) ? error.message : 'Không đồng bộ được catalog Shopee'
-    return NextResponse.json({ status: 'error', message }, { status: 502, headers: { 'cache-control': 'no-store' } })
+    const code = classifyShopeeError(error)
+    const message = error instanceof Error && ['not_configured', 'refresh_token_not_configured', 'token_store_not_configured'].includes(error.message) ? error.message : code === 'refresh_token_not_configured' ? 'refresh_token_not_configured' : code === 'reauthorization_required' ? 'reauthorization_required' : 'Không đồng bộ được catalog Shopee'
+    return NextResponse.json({ status: 'error', code, message }, { status: 502, headers: { 'cache-control': 'no-store' } })
   }
 }

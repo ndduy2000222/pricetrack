@@ -1,5 +1,6 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto'
 import type { ShopeeTokenSet } from './shopee-open-api'
+import { supabaseHeaders } from './supabase-http'
 
 type StoredToken = { access_token_ciphertext: string, refresh_token_ciphertext: string, access_token_expires_at: string | null }
 
@@ -36,7 +37,7 @@ export function tokenStoreStatus () {
 export async function readStoredShopeeTokens (shopId: string) {
   const config = supabaseConfig(); if (!config) return null
   const url = `${config.baseUrl}/rest/v1/shopee_token_credentials?shop_id=eq.${encodeURIComponent(shopId)}&select=access_token_ciphertext,refresh_token_ciphertext,access_token_expires_at&limit=1`
-  const response = await fetch(url, { headers: { apikey: config.serviceKey, Authorization: `Bearer ${config.serviceKey}` }, cache: 'no-store' })
+  const response = await fetch(url, { headers: supabaseHeaders(config.serviceKey), cache: 'no-store' })
   if (!response.ok) throw new Error(`token_store_read_failed:${response.status}`)
   const rows = await response.json() as StoredToken[]
   const row = rows[0]; if (!row) return null
@@ -47,7 +48,7 @@ export async function persistShopeeTokens (shopId: string, tokens: ShopeeTokenSe
   const config = supabaseConfig(); if (!config) throw new Error('token_store_not_configured')
   const url = `${config.baseUrl}/rest/v1/shopee_token_credentials?on_conflict=shop_id`
   const response = await fetch(url, {
-    method: 'POST', headers: { apikey: config.serviceKey, Authorization: `Bearer ${config.serviceKey}`, 'content-type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+    method: 'POST', headers: supabaseHeaders(config.serviceKey, { 'content-type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' }),
     body: JSON.stringify({ shop_id: shopId, access_token_ciphertext: encrypt(tokens.accessToken, config.key), refresh_token_ciphertext: encrypt(tokens.refreshToken, config.key), access_token_expires_at: tokens.accessTokenExpiresAt, updated_at: new Date().toISOString() })
   })
   if (!response.ok) throw new Error(`token_store_write_failed:${response.status}`)

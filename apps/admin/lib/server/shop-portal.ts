@@ -1,6 +1,8 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import { createShopeeAuthorizationUrl, exchangeShopeeAuthorizationCode, type ShopeeTokenSet } from './shopee-open-api'
 import { persistShopeeTokens } from './shopee-token-store'
+import { supabaseHeaders } from './supabase-http'
+import { isPortalSessionValid, shopAuthStatus } from './shop-auth'
 
 type SupabaseConfig = { baseUrl: string, serviceKey: string }
 type InviteRow = { id: string, token_hash: string, expires_at: string, used_at: string | null, status: string, connection_id: string | null }
@@ -17,7 +19,7 @@ function config (): SupabaseConfig | null {
 }
 
 function headers (cfg: SupabaseConfig, extra: Record<string, string> = {}) {
-  return { apikey: cfg.serviceKey, Authorization: `Bearer ${cfg.serviceKey}`, 'content-type': 'application/json', ...extra }
+  return supabaseHeaders(cfg.serviceKey, { 'content-type': 'application/json', ...extra })
 }
 
 async function supabaseFetch<T> (path: string, init: RequestInit = {}): Promise<T> {
@@ -32,8 +34,9 @@ function portalSecret () { return process.env.SHOP_PORTAL_ADMIN_SECRET ?? proces
 function adminCookieValue () { const secret = portalSecret(); return secret ? createHmac('sha256', secret).update('alpha-shop-portal-admin-v1').digest('hex') : '' }
 function cookieValue (request: Request) { return request.headers.get('cookie')?.split(';').map((part) => part.trim()).find((part) => part.startsWith(`${adminCookie}=`))?.slice(adminCookie.length + 1) ?? '' }
 
-export function portalStatus () { return { configured: Boolean(config() && process.env.SHOPEE_PARTNER_ID && process.env.SHOPEE_PARTNER_KEY && process.env.SHOPEE_TOKEN_ENCRYPTION_KEY && portalSecret()), missing: ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SECRET_KEY', 'SHOPEE_PARTNER_ID', 'SHOPEE_PARTNER_KEY', 'SHOPEE_TOKEN_ENCRYPTION_KEY', 'SHOP_PORTAL_ADMIN_SECRET'].filter((key) => (key === 'SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SECRET_KEY' ? !process.env.SUPABASE_SERVICE_ROLE_KEY && !process.env.SUPABASE_SECRET_KEY : !process.env[key] && !(key === 'SHOP_PORTAL_ADMIN_SECRET' && process.env.CATALOG_SYNC_SECRET))) } }
-export function isPortalAdmin (request: Request) {
+export function portalStatus () { const auth = shopAuthStatus(); return { configured: Boolean(config() && process.env.SHOPEE_PARTNER_ID && process.env.SHOPEE_PARTNER_KEY && process.env.SHOPEE_TOKEN_ENCRYPTION_KEY && auth.configured), authMode: 'email_otp', missing: [...auth.missing, 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SECRET_KEY', 'SHOPEE_PARTNER_ID', 'SHOPEE_PARTNER_KEY', 'SHOPEE_TOKEN_ENCRYPTION_KEY'].filter((key, index, list) => list.indexOf(key) === index && (key === 'SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SECRET_KEY' ? !process.env.SUPABASE_SERVICE_ROLE_KEY && !process.env.SUPABASE_SECRET_KEY : !process.env[key] && !auth.missing.includes(key))) } }
+export async function isPortalAdmin (request: Request) {
+  if (await isPortalSessionValid(request)) return true
   const expected = adminCookieValue(); const actual = cookieValue(request)
   return Boolean(expected && actual && expected.length === actual.length && timingSafeEqual(Buffer.from(expected), Buffer.from(actual)))
 }

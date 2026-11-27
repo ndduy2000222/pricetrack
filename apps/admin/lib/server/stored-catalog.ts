@@ -1,4 +1,5 @@
 import type { CatalogRow } from './catalog'
+import { supabaseHeaders } from './supabase-http'
 
 type StoredCatalog = {
   connectionId: string
@@ -18,7 +19,7 @@ function supabaseConfig () {
 }
 
 async function readJson (url: string, key: string) {
-  const response = await fetch(url, { headers: { apikey: key, authorization: `Bearer ${key}` }, cache: 'no-store' })
+  const response = await fetch(url, { headers: supabaseHeaders(key), cache: 'no-store' })
   if (!response.ok) throw new Error(`supabase_http_${response.status}`)
   return response.json() as Promise<unknown>
 }

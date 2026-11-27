@@ -76,3 +76,8 @@ alter table public.shop_catalog_rows enable row level security;
 
 -- These tables are accessed by the server with the Supabase service role.
 -- No client policy is intentionally created because they contain OAuth state and catalog data.
+grant usage on schema public to service_role;
+grant select, insert, update, delete on table public.shop_connections to service_role;
+grant select, insert, update, delete on table public.shop_connection_invites to service_role;
+grant select, insert, update, delete on table public.shop_sync_runs to service_role;
+grant select, insert, update, delete on table public.shop_catalog_rows to service_role;

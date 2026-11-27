@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import './market-workspace.css'
 
 export const metadata: Metadata = {
   title: 'Alpha Books Price Control',
